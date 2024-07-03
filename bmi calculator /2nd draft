@@ -1,0 +1,77 @@
+def calculate_bmi(weight, height):
+    try:
+        bmi = weight / (height ** 2)
+        return bmi
+    except ZeroDivisionError:
+        return "Height cannot be zero."
+
+def bmi_category(bmi):
+    if bmi < 18.5:
+        return "Underweight"
+    elif 18.5 <= bmi < 24.9:
+        return "Normal weight"
+    elif 25 <= bmi < 29.9:
+        return "Overweight"
+    else:
+        return "Obesity"
+
+def health_advice(category):
+    advice = {
+        "Underweight": "Consider gaining weight through a healthy diet and exercise.",
+        "Normal weight": "Maintain your weight through balanced diet and regular exercise.",
+        "Overweight": "Consider losing weight through a healthy diet and exercise.",
+        "Obesity": "Seek advice from a healthcare provider for a personalized plan."
+    }
+    return advice.get(category, "")
+
+def convert_units(weight, weight_unit, height, height_unit):
+    if weight_unit == "lbs":
+        weight = weight * 0.453592  # Convert pounds to kilograms
+    if height_unit == "cm":
+        height = height / 100  # Convert centimeters to meters
+    elif height_unit == "in":
+        height = height * 0.0254  # Convert inches to meters
+    return weight, height
+
+def get_user_input():
+    while True:
+        try:
+            weight = float(input("Enter your weight: "))
+            weight_unit = input("Is this in kilograms (kg) or pounds (lbs)? ").strip().lower()
+            if weight_unit not in ['kg', 'lbs']:
+                raise ValueError("Invalid weight unit. Please enter 'kg' or 'lbs'.")
+
+            height = float(input("Enter your height: "))
+            height_unit = input("Is this in meters (m), centimeters (cm), or inches (in)? ").strip().lower()
+            if height_unit not in ['m', 'cm', 'in']:
+                raise ValueError("Invalid height unit. Please enter 'm', 'cm', or 'in'.")
+
+            if weight <= 0 or height <= 0:
+                raise ValueError("Weight and height must be positive values.")
+
+            return weight, weight_unit, height, height_unit
+        except ValueError as e:
+            print(f"Error: {e}. Please try again.")
+
+def main():
+    while True:
+        weight, weight_unit, height, height_unit = get_user_input()
+        weight, height = convert_units(weight, weight_unit, height, height_unit)
+        
+        bmi = calculate_bmi(weight, height)
+        
+        if isinstance(bmi, str):
+            print(bmi)
+        else:
+            category = bmi_category(bmi)
+            advice = health_advice(category)
+            print(f"Your BMI is: {bmi:.2f}")
+            print(f"Category: {category}")
+            print(f"Health Advice: {advice}")
+        
+        again = input("Do you want to calculate another BMI? (yes/no): ").strip().lower()
+        if again != "yes":
+            break
+
+if __name__ == "__main__":
+    main()
