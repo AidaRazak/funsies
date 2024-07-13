@@ -1,0 +1,234 @@
+package com.exchange;
+
+import java.io.*;
+import java.net.*;
+import java.util.*;
+import javax.servlet.*;
+import javax.servlet.http.*;
+import com.google.gson.*;
+import java.util.logging.*;
+import java.util.regex.*;
+import java.time.*;
+
+/**
+ * Servlet implementation class Convert
+ */
+public class Convert extends HttpServlet {
+    private static final long serialVersionUID = 1L;
+    private static final Logger logger = Logger.getLogger(Convert.class.getName());
+    private static final String API_URL = "https://api.exchangerate-api.com/v4/latest/";
+    private static final int CACHE_EXPIRATION_MINUTES = 60;
+
+    // Cache to store exchange rates
+    private Map<String, CachedRates> ratesCache = new HashMap<>();
+
+    class ConversionResult {
+        private String base;
+        private String date;
+        private JsonObject rates;
+
+        public String getBase() {
+            return base;
+        }
+
+        public String getDate() {
+            return date;
+        }
+
+        public JsonObject getRates() {
+            return rates;
+        }
+    }
+
+    class CachedRates {
+        private JsonObject rates;
+        private LocalDateTime fetchTime;
+
+        public CachedRates(JsonObject rates, LocalDateTime fetchTime) {
+            this.rates = rates;
+            this.fetchTime = fetchTime;
+        }
+
+        public JsonObject getRates() {
+            return rates;
+        }
+
+        public LocalDateTime getFetchTime() {
+            return fetchTime;
+        }
+    }
+
+    /**
+     * Processes requests for both HTTP <code>GET</code> and <code>POST</code> methods.
+     * @param request servlet request
+     * @param response servlet response
+     * @throws ServletException if a servlet-specific error occurs
+     * @throws IOException if an I/O error occurs
+     */
+    protected void processRequest(HttpServletRequest req, HttpServletResponse resp)
+            throws ServletException, IOException {
+        String amountStr = req.getParameter("amount");
+        String curTo = req.getParameter("to");
+        String curFrom = req.getParameter("from");
+        String clearCache = req.getParameter("clearCache");
+        resp.setContentType("application/json;charset=UTF-8");
+
+        if ("true".equalsIgnoreCase(clearCache)) {
+            ratesCache.clear();
+            try (PrintWriter out = resp.getWriter()) {
+                JsonObject responseJson = new JsonObject();
+                responseJson.addProperty("status", "success");
+                responseJson.addProperty("message", "Cache cleared successfully.");
+                out.println(responseJson.toString());
+            }
+            return;
+        }
+
+        // Validate input parameters
+        if (amountStr == null || curTo == null || curFrom == null ||
+                amountStr.isEmpty() || curTo.isEmpty() || curFrom.isEmpty() ||
+                !isNumeric(amountStr) || !isValidCurrency(curTo) || !isValidCurrency(curFrom)) {
+            try (PrintWriter out = resp.getWriter()) {
+                JsonObject responseJson = new JsonObject();
+                responseJson.addProperty("status", "error");
+                responseJson.addProperty("message", "Invalid input parameters. Please ensure you provide a valid amount and currency codes.");
+                out.println(responseJson.toString());
+            }
+            return;
+        }
+
+        double amount = Double.parseDouble(amountStr);
+
+        try (PrintWriter out = resp.getWriter()) {
+            JsonObject rates = getExchangeRates(curFrom);
+
+            if (rates == null || !rates.has(curTo)) {
+                JsonObject responseJson = new JsonObject();
+                responseJson.addProperty("status", "error");
+                responseJson.addProperty("message", "Error: Unable to fetch conversion rate for the specified currencies.");
+                out.println(responseJson.toString());
+                return;
+            }
+
+            double conversionRate = rates.get(curTo).getAsDouble();
+            double convertedAmount = amount * conversionRate;
+
+            // Print the result
+            JsonObject responseJson = new JsonObject();
+            responseJson.addProperty("status", "success");
+            responseJson.addProperty("convertedAmount", String.format("%.2f", convertedAmount));
+            responseJson.addProperty("currency", curTo);
+            out.println(responseJson.toString());
+        } catch (NumberFormatException e) {
+            logger.log(Level.SEVERE, "Invalid amount format", e);
+            try (PrintWriter out = resp.getWriter()) {
+                JsonObject responseJson = new JsonObject();
+                responseJson.addProperty("status", "error");
+                responseJson.addProperty("message", "The given amount is not a valid number.");
+                out.println(responseJson.toString());
+            }
+        } catch (MalformedURLException e) {
+            logger.log(Level.SEVERE, "Malformed URL", e);
+            try (PrintWriter out = resp.getWriter()) {
+                JsonObject responseJson = new JsonObject();
+                responseJson.addProperty("status", "error");
+                responseJson.addProperty("message", "There was an error forming the URL for the API request.");
+                out.println(responseJson.toString());
+            }
+        } catch (IOException e) {
+            logger.log(Level.SEVERE, "Error reading from the URL", e);
+            try (PrintWriter out = resp.getWriter()) {
+                JsonObject responseJson = new JsonObject();
+                responseJson.addProperty("status", "error");
+                responseJson.addProperty("message", "There was an error reading data from the API.");
+                out.println(responseJson.toString());
+            }
+        } catch (Exception e) {
+            logger.log(Level.SEVERE, "Unexpected error", e);
+            try (PrintWriter out = resp.getWriter()) {
+                JsonObject responseJson = new JsonObject();
+                responseJson.addProperty("status", "error");
+                responseJson.addProperty("message", "An unexpected error occurred. Please try again later.");
+                out.println(responseJson.toString());
+            }
+        }
+    }
+
+    private boolean isNumeric(String str) {
+        try {
+            Double.parseDouble(str);
+            return true;
+        } catch (NumberFormatException e) {
+            return false;
+        }
+    }
+
+    private boolean isValidCurrency(String currency) {
+        // Simple regex to check if the currency code is a 3-letter alphabetic code
+        Pattern pattern = Pattern.compile("^[A-Z]{3}$");
+        Matcher matcher = pattern.matcher(currency);
+        return matcher.matches();
+    }
+
+    private JsonObject getExchangeRates(String baseCurrency) throws IOException {
+        LocalDateTime now = LocalDateTime.now();
+        CachedRates cachedRates = ratesCache.get(baseCurrency);
+
+        if (cachedRates != null && Duration.between(cachedRates.getFetchTime(), now).toMinutes() < CACHE_EXPIRATION_MINUTES) {
+            return cachedRates.getRates();
+        }
+
+        String query = API_URL + URLEncoder.encode(baseCurrency, "UTF-8");
+        URL url = new URL(query);
+
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(url.openStream()))) {
+            StringBuilder str = new StringBuilder();
+            String temp;
+
+            while ((temp = in.readLine()) != null) {
+                str.append(temp);
+            }
+
+            Gson gson = new Gson();
+            ConversionResult result = gson.fromJson(str.toString(), ConversionResult.class);
+            JsonObject rates = result.getRates();
+            ratesCache.put(baseCurrency, new CachedRates(rates, now));
+            return rates;
+        }
+    }
+
+    /**
+     * Handles the HTTP <code>GET</code> method.
+     * @param request servlet request
+     * @param response servlet response
+     * @throws ServletException if a servlet-specific error occurs
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    protected void doGet(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        processRequest(request, response);
+    }
+
+    /**
+     * Handles the HTTP <code>POST</code> method.
+     * @param request servlet request
+     * @param response servlet response
+     * @throws ServletException if a servlet-specific error occurs
+     * @throws IOException if an I/O error occurs
+     */
+    @Override
+    protected void doPost(HttpServletRequest request, HttpServletResponse response)
+            throws ServletException, IOException {
+        processRequest(request, response);
+    }
+
+    /**
+     * Returns a short description of the servlet.
+     * @return a String containing servlet description
+     */
+    @Override
+    public String getServletInfo() {
+        return "Currency conversion servlet";
+    }
+}
