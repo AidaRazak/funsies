@@ -1,0 +1,31 @@
+import random
+
+class WeatherSystem:
+    CONDITIONS = ["Sunny", "Cloudy", "Rainy", "Snowy"]
+
+    def __init__(self):
+        self.temperature = 0.0  # in Celsius
+        self.humidity = 0.0  # in percentage
+        self.wind_speed = 0.0  # in meters per second
+        self.current_condition = ""
+
+    def generate_weather(self):
+        """Generate random weather data."""
+        self.temperature = round(random.uniform(-10, 30), 1)
+        self.humidity = round(random.uniform(20, 90), 1)
+        self.wind_speed = round(random.uniform(0, 20), 1)
+        self.current_condition = random.choice(self.CONDITIONS)
+
+    def display_weather(self):
+        """Display the current weather data."""
+        print(f"Weather: {self.current_condition}")
+        print(f"Temperature: {self.temperature}°C")
+        print(f"Humidity: {self.humidity}%")
+        print(f"Wind Speed: {self.wind_speed} m/s")
+        print()
+
+# Example usage:
+if __name__ == "__main__":
+    weather_system = WeatherSystem()
+    weather_system.generate_weather()
+    weather_system.display_weather()
