@@ -1,0 +1,108 @@
+import random
+from datetime import datetime, timedelta
+
+class WeatherSystem:
+    CONDITIONS = {
+        "Sunny": "Clear sky and bright sunshine.",
+        "Cloudy": "Overcast skies with no precipitation.",
+        "Rainy": "Rainfall is expected, be prepared with an umbrella.",
+        "Snowy": "Snow is falling, roads may be slippery."
+    }
+
+    def __init__(self):
+        self.temperature = 0.0  # in Celsius
+        self.humidity = 0.0  # in percentage
+        self.wind_speed = 0.0  # in meters per second
+        self.current_condition = ""
+        self.feels_like_temperature = 0.0  # Calculated based on temperature, humidity, wind
+        self.date_time = None  # Current date and time
+
+    def _generate_temperature(self):
+        """Generate random temperature in Celsius."""
+        return round(random.uniform(-10, 30), 1)
+
+    def _generate_humidity(self):
+        """Generate random humidity percentage."""
+        return round(random.uniform(20, 90), 1)
+
+    def _generate_wind_speed(self):
+        """Generate random wind speed in meters per second."""
+        return round(random.uniform(0, 20), 1)
+
+    def generate_weather(self):
+        """Generate random weather data."""
+        self.temperature = self._generate_temperature()
+        self.humidity = self._generate_humidity()
+        self.wind_speed = self._generate_wind_speed()
+        self.current_condition = random.choice(list(self.CONDITIONS.keys()))
+        self.feels_like_temperature = self.calculate_feels_like_temperature()
+        self.date_time = datetime.now()  # Set current date and time
+
+    def calculate_feels_like_temperature(self):
+        """Calculate feels-like temperature based on temperature, humidity, and wind."""
+        wind_factor = self.wind_speed / 3.6  # Convert wind speed to km/h
+        humidity_factor = self.humidity / 3.5
+        feels_like = self.temperature + wind_factor - humidity_factor
+        return round(feels_like, 1)
+
+    def display_weather(self):
+        """Display the current weather data."""
+        description = self.CONDITIONS.get(self.current_condition, 'No description')
+        print(f"Date and Time: {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Weather: {self.current_condition}")
+        print(f"Description: {description}")
+        print(f"Temperature: {self.temperature}°C ({self.convert_celsius_to_fahrenheit(self.temperature)}°F)")
+        print(f"Feels Like: {self.feels_like_temperature}°C")
+        print(f"Humidity: {self.humidity}%")
+        print(f"Wind Speed: {self.wind_speed} m/s")
+        print()
+
+    def suggest_activity(self):
+        """Suggest an activity based on current weather conditions."""
+        suggestions = {
+            "Sunny": "Perfect weather for outdoor activities like hiking or picnicking.",
+            "Cloudy": "Good for a casual walk or outdoor sports.",
+            "Rainy": "Stay indoors and enjoy a good book or movie.",
+            "Snowy": "Time to build a snowman or have a snowball fight."
+        }
+        suggestion = suggestions.get(self.current_condition, "Weather condition not recognized.")
+        return suggestion
+
+    def generate_weather_forecast(self):
+        """Generate a simple weather forecast for the next day."""
+        next_day = self.date_time + timedelta(days=1)
+        forecast_condition = random.choice(list(self.CONDITIONS.keys()))
+        forecast_temperature = self._generate_temperature()
+        forecast_description = self.CONDITIONS.get(forecast_condition, 'No description')
+
+        return {
+            "Date": next_day.strftime('%Y-%m-%d'),
+            "Weather": forecast_condition,
+            "Description": forecast_description,
+            "Temperature": forecast_temperature
+        }
+
+    @staticmethod
+    def convert_celsius_to_fahrenheit(celsius):
+        """Convert temperature from Celsius to Fahrenheit."""
+        return round((celsius * 9/5) + 32, 1)
+
+    @staticmethod
+    def convert_fahrenheit_to_celsius(fahrenheit):
+        """Convert temperature from Fahrenheit to Celsius."""
+        return round((fahrenheit - 32) * 5/9, 1)
+
+# Example usage:
+if __name__ == "__main__":
+    weather_system = WeatherSystem()
+    weather_system.generate_weather()
+    weather_system.display_weather()
+    activity_suggestion = weather_system.suggest_activity()
+    print(f"Suggested activity: {activity_suggestion}")
+
+    forecast = weather_system.generate_weather_forecast()
+    print("\nWeather Forecast for Tomorrow:")
+    print(f"Date: {forecast['Date']}")
+    print(f"Weather: {forecast['Weather']}")
+    print(f"Description: {forecast['Description']}")
+    print(f"Temperature: {forecast['Temperature']}°C")
