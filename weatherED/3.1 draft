@@ -1,0 +1,309 @@
+import random
+from datetime import datetime, timedelta
+import csv
+import requests
+import matplotlib.pyplot as plt
+import os
+
+class WeatherSystem:
+    CONDITIONS = {
+        "Sunny": "Clear sky and bright sunshine.",
+        "Cloudy": "Overcast skies with no precipitation.",
+        "Rainy": "Rainfall is expected, be prepared with an umbrella.",
+        "Snowy": "Snow is falling, roads may be slippery.",
+        "Windy": "Strong winds, hold onto your hat.",
+        "Stormy": "Thunderstorms are expected, stay indoors."
+    }
+
+    ALERTS = {
+        "Sunny": "Enjoy the weather but stay hydrated.",
+        "Cloudy": "No significant alerts.",
+        "Rainy": "Flooding possible in low-lying areas.",
+        "Snowy": "Travel may be hazardous.",
+        "Windy": "Secure loose objects outside.",
+        "Stormy": "Severe weather warning in effect."
+    }
+
+    def __init__(self):
+        self.temperature = 0.0  # in Celsius
+        self.humidity = 0.0  # in percentage
+        self.wind_speed = 0.0  # in meters per second
+        self.current_condition = ""
+        self.feels_like_temperature = 0.0  # Calculated based on temperature, humidity, wind
+        self.date_time = datetime.now()  # Current date and time
+        self.precipitation_chance = 0.0  # in percentage
+        self.uv_index = 0  # UV index
+        self.aqi = 0  # Air Quality Index
+        self.historical_data = []  # Store past weather data
+
+    def _generate_temperature(self):
+        """Generate random temperature in Celsius."""
+        return round(random.uniform(-10, 35), 1)
+
+    def _generate_humidity(self):
+        """Generate random humidity percentage."""
+        return round(random.uniform(10, 100), 1)
+
+    def _generate_wind_speed(self):
+        """Generate random wind speed in meters per second."""
+        return round(random.uniform(0, 25), 1)
+
+    def _generate_precipitation_chance(self):
+        """Generate random precipitation chance percentage."""
+        return round(random.uniform(0, 100), 1)
+
+    def _generate_uv_index(self):
+        """Generate random UV index."""
+        return random.randint(0, 11)
+
+    def _generate_aqi(self):
+        """Generate random Air Quality Index."""
+        return random.randint(0, 500)
+
+    def generate_weather(self):
+        """Generate random weather data."""
+        self.temperature = self._generate_temperature()
+        self.humidity = self._generate_humidity()
+        self.wind_speed = self._generate_wind_speed()
+        self.current_condition = random.choice(list(self.CONDITIONS.keys()))
+        self.feels_like_temperature = self.calculate_feels_like_temperature()
+        self.date_time = datetime.now()  # Update current date and time
+        self.precipitation_chance = self._generate_precipitation_chance()
+        self.uv_index = self._generate_uv_index()
+        self.aqi = self._generate_aqi()
+        self._store_historical_data()
+
+    def calculate_feels_like_temperature(self):
+        """Calculate feels-like temperature based on temperature, humidity, and wind."""
+        wind_chill_factor = (self.wind_speed * 3.6) / 2  # Simplified wind chill factor
+        humidity_factor = self.humidity / 10  # Simplified humidity factor
+        feels_like = self.temperature - wind_chill_factor + humidity_factor
+        return round(feels_like, 1)
+
+    def _store_historical_data(self):
+        """Store the generated weather data for historical record."""
+        data = {
+            "date_time": self.date_time,
+            "temperature": self.temperature,
+            "humidity": self.humidity,
+            "wind_speed": self.wind_speed,
+            "current_condition": self.current_condition,
+            "feels_like_temperature": self.feels_like_temperature,
+            "precipitation_chance": self.precipitation_chance,
+            "uv_index": self.uv_index,
+            "aqi": self.aqi
+        }
+        # Check if data for the same date_time already exists to avoid duplication
+        if not any(record['date_time'] == self.date_time for record in self.historical_data):
+            self.historical_data.append(data)
+
+    def display_weather(self):
+        """Display the current weather data."""
+        description = self.CONDITIONS.get(self.current_condition, 'No description available.')
+        alert = self.ALERTS.get(self.current_condition, 'No alert available.')
+        print(f"Date and Time: {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Weather: {self.current_condition}")
+        print(f"Description: {description}")
+        print(f"Temperature: {self.temperature}°C ({self.convert_celsius_to_fahrenheit(self.temperature)}°F)")
+        print(f"Feels Like: {self.feels_like_temperature}°C ({self.convert_celsius_to_fahrenheit(self.feels_like_temperature)}°F)")
+        print(f"Humidity: {self.humidity}%")
+        print(f"Wind Speed: {self.wind_speed} m/s ({self.convert_mps_to_kph(self.wind_speed)} km/h)")
+        print(f"Precipitation Chance: {self.precipitation_chance}%")
+        print(f"UV Index: {self.uv_index}")
+        print(f"Air Quality Index (AQI): {self.aqi}")
+        print(f"Alert: {alert}")
+        print()
+
+    def suggest_activity(self):
+        """Suggest an activity based on current weather conditions."""
+        suggestions = {
+            "Sunny": "Perfect weather for outdoor activities like hiking or picnicking.",
+            "Cloudy": "Good for a casual walk or outdoor sports.",
+            "Rainy": "Stay indoors and enjoy a good book or movie.",
+            "Snowy": "Time to build a snowman or have a snowball fight.",
+            "Windy": "Great for flying kites or windsurfing, but be cautious.",
+            "Stormy": "Stay indoors and avoid outdoor activities."
+        }
+        return suggestions.get(self.current_condition, "Weather condition not recognized.")
+
+    def generate_weather_forecast(self):
+        """Generate a simple weather forecast for the next 7 days."""
+        forecast = []
+        for i in range(1, 8):
+            next_day = self.date_time + timedelta(days=i)
+            forecast_condition = random.choice(list(self.CONDITIONS.keys()))
+            forecast_temperature = self._generate_temperature()
+            forecast_description = self.CONDITIONS.get(forecast_condition, 'No description available.')
+            forecast.append({
+                "Date": next_day.strftime('%Y-%m-%d'),
+                "Weather": forecast_condition,
+                "Description": forecast_description,
+                "Temperature": forecast_temperature
+            })
+        return forecast
+
+    def get_historical_summary(self):
+        """Generate a summary of historical weather data."""
+        if not self.historical_data:
+            return "No historical data available."
+        
+        summary = {
+            "total_records": len(self.historical_data),
+            "average_temperature": round(sum(data["temperature"] for data in self.historical_data) / len(self.historical_data), 1),
+            "average_humidity": round(sum(data["humidity"] for data in self.historical_data) / len(self.historical_data), 1),
+            "average_wind_speed": round(sum(data["wind_speed"] for data in self.historical_data) / len(self.historical_data), 1),
+            "average_precipitation_chance": round(sum(data["precipitation_chance"] for data in self.historical_data) / len(self.historical_data), 1),
+            "average_uv_index": round(sum(data["uv_index"] for data in self.historical_data) / len(self.historical_data)),
+            "average_aqi": round(sum(data["aqi"] for data in self.historical_data) / len(self.historical_data))
+        }
+        return summary
+
+    def compare_with_historical(self):
+        """Compare current weather with historical data."""
+        if not self.historical_data:
+            return "No historical data available for comparison."
+        
+        latest_record = self.historical_data[-1]
+        comparison = {
+            "temperature_diff": round(self.temperature - latest_record["temperature"], 1),
+            "humidity_diff": round(self.humidity - latest_record["
+            "humidity_diff": round(self.humidity - latest_record["humidity"], 1),
+            "wind_speed_diff": round(self.wind_speed - latest_record["wind_speed"], 1),
+            "precipitation_chance_diff": round(self.precipitation_chance - latest_record["precipitation_chance"], 1),
+            "uv_index_diff": self.uv_index - latest_record["uv_index"],
+            "aqi_diff": self.aqi - latest_record["aqi"]
+        }
+        return comparison
+
+    def analyze_temperature_trend(self, days=7):
+        """Analyze temperature trend over a period."""
+        if len(self.historical_data) < days:
+            return "Insufficient historical data to analyze trend."
+        
+        temperatures = [data["temperature"] for data in self.historical_data[-days:]]
+        trend = "Increasing" if temperatures[-1] > temperatures[0] else "Decreasing" if temperatures[-1] < temperatures[0] else "Stable"
+        return {
+            "average_temperature": round(sum(temperatures) / len(temperatures), 1),
+            "trend": trend
+        }
+
+    def export_historical_data(self, filename='historical_weather_data.csv'):
+        """Export historical weather data to a CSV file."""
+        with open(filename, 'w', newline='') as csvfile:
+            fieldnames = [
+                "date_time", "temperature", "humidity", "wind_speed",
+                "current_condition", "feels_like_temperature", "precipitation_chance",
+                "uv_index", "aqi"
+            ]
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(self.historical_data)
+        print(f"Historical data exported to {filename}.")
+
+    def fetch_weather_by_location(self, city):
+        """Fetch current weather data based on city name using OpenWeatherMap API."""
+        api_key = os.getenv('OPENWEATHERMAP_API_KEY')
+        if not api_key:
+            print("API key not set. Please set the 'OPENWEATHERMAP_API_KEY' environment variable.")
+            return
+
+        url = f'http://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&appid={api_key}'
+        
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+            
+            self.temperature = data['main']['temp']
+            self.humidity = data['main']['humidity']
+            self.wind_speed = data['wind']['speed']
+            self.current_condition = data['weather'][0]['main']
+            self.feels_like_temperature = self.calculate_feels_like_temperature()
+            self.date_time = datetime.fromtimestamp(data['dt'])
+            self.precipitation_chance = data.get('rain', {}).get('1h', 0)  # Assuming 1-hour rainfall for simplicity
+            self.uv_index = 0  # UV index is not available in the basic API call
+            self.aqi = 0  # AQI is not available in the basic API call
+
+            self._store_historical_data()
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching weather data: {e}")
+
+    def check_severe_weather(self):
+        """Check for severe weather conditions and issue alerts."""
+        if self.current_condition == "Stormy":
+            print("Severe weather warning: Thunderstorms are expected, stay indoors.")
+        elif self.current_condition == "Rainy" and self.precipitation_chance > 70:
+            print("Heavy rain warning: Flooding possible in low-lying areas.")
+        # Add more conditions based on specific thresholds and alerts
+
+    def visualize_temperature_trend(self, days=7):
+        """Visualize temperature trend over the last 'days' days."""
+        if len(self.historical_data) < days:
+            print("Insufficient historical data to visualize trend.")
+            return
+        
+        dates = [data["date_time"].strftime('%Y-%m-%d') for data in self.historical_data[-days:]]
+        temperatures = [data["temperature"] for data in self.historical_data[-days:]]
+        
+        plt.figure(figsize=(10, 5))
+        plt.plot(dates, temperatures, marker='o')
+        plt.title('Temperature Trend')
+        plt.xlabel('Date')
+        plt.ylabel('Temperature (°C)')
+        plt.xticks(rotation=45)
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+    @staticmethod
+    def convert_celsius_to_fahrenheit(celsius):
+        """Convert temperature from Celsius to Fahrenheit."""
+        return round((celsius * 9/5) + 32, 1)
+
+    @staticmethod
+    def convert_fahrenheit_to_celsius(fahrenheit):
+        """Convert temperature from Fahrenheit to Celsius."""
+        return round((fahrenheit - 32) * 5/9, 1)
+
+    @staticmethod
+    def convert_mps_to_kph(mps):
+        """Convert wind speed from meters per second to kilometers per hour."""
+        return round(mps * 3.6, 1)
+
+# Example usage:
+if __name__ == "__main__":
+    weather_system = WeatherSystem()
+    weather_system.generate_weather()
+    weather_system.display_weather()
+    activity_suggestion = weather_system.suggest_activity()
+    print(f"Suggested activity: {activity_suggestion}")
+
+    forecast = weather_system.generate_weather_forecast()
+    print("\nWeather Forecast for the Next 7 Days:")
+    for day in forecast:
+        print(f"Date: {day['Date']}")
+        print(f"Weather: {day['Weather']}")
+        print(f"Description: {day['Description']}")
+        print(f"Temperature: {day['Temperature']}°C ({weather_system.convert_celsius_to_fahrenheit(day['Temperature'])}°F)")
+        print()
+
+    print("Historical Weather Data Summary:")
+    print(weather_system.get_historical_summary())
+
+    print("Comparing Current Weather with Historical Data:")
+    print(weather_system.compare_with_historical())
+
+    weather_system.export_historical_data()
+
+    # Fetch weather by location example:
+    city = input("Enter city name for weather: ")
+    weather_system.fetch_weather_by_location(city)
+    weather_system.display_weather()
+
+    # Check severe weather example:
+    weather_system.check_severe_weather()
+
+    # Visualize temperature trend example:
+    days_to_visualize = int(input("Enter number of days to visualize temperature trend: "))
+    weather_system.visualize_temperature_trend(days_to_visualize)
