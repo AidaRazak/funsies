@@ -1,0 +1,397 @@
+import random
+import csv
+import json
+import requests
+import matplotlib.pyplot as plt
+import os
+from datetime import datetime, timedelta
+from uuid import uuid4
+
+
+class WeatherSystem:
+    CONDITIONS = {
+        "Sunny": "Clear sky and bright sunshine.",
+        "Cloudy": "Overcast skies with no precipitation.",
+        "Rainy": "Rainfall is expected, be prepared with an umbrella.",
+        "Snowy": "Snow is falling, roads may be slippery.",
+        "Windy": "Strong winds, hold onto your hat.",
+        "Stormy": "Thunderstorms are expected, stay indoors."
+    }
+
+    ALERTS = {
+        "Sunny": "Enjoy the weather but stay hydrated.",
+        "Cloudy": "No significant alerts.",
+        "Rainy": "Flooding possible in low-lying areas.",
+        "Snowy": "Travel may be hazardous.",
+        "Windy": "Secure loose objects outside.",
+        "Stormy": "Severe weather warning in effect."
+    }
+
+    SEASONS = {
+        "Spring": {"min_temp": 5, "max_temp": 20, "rain_chance": 50},
+        "Summer": {"min_temp": 15, "max_temp": 35, "rain_chance": 30},
+        "Autumn": {"min_temp": 0, "max_temp": 15, "rain_chance": 60},
+        "Winter": {"min_temp": -10, "max_temp": 5, "rain_chance": 40, "snow_chance": 50}
+    }
+
+    def __init__(self):
+        self.temperature = 0.0  # in Celsius
+        self.humidity = 0.0  # in percentage
+        self.wind_speed = 0.0  # in meters per second
+        self.current_condition = ""
+        self.feels_like_temperature = 0.0  # Calculated based on temperature, humidity, wind
+        self.date_time = datetime.now()  # Current date and time
+        self.precipitation_chance = 0.0  # in percentage
+        self.uv_index = 0  # UV index
+        self.aqi = 0  # Air Quality Index
+        self.historical_data = []  # Store past weather data
+        self.custom_alerts = {}  # User-defined alerts
+
+    def _generate_random_value(self, min_val, max_val, decimal_places=1):
+        return round(random.uniform(min_val, max_val), decimal_places)
+
+    def _generate_temperature(self):
+        season = self.get_current_season()
+        return self._generate_random_value(self.SEASONS[season]["min_temp"], self.SEASONS[season]["max_temp"])
+
+    def _generate_humidity(self):
+        return self._generate_random_value(10, 100)
+
+    def _generate_wind_speed(self):
+        return self._generate_random_value(0, 25)
+
+    def _generate_precipitation_chance(self):
+        season = self.get_current_season()
+        return self._generate_random_value(0, self.SEASONS[season]["rain_chance"])
+
+    def _generate_uv_index(self):
+        return random.randint(0, 11)
+
+    def _generate_aqi(self):
+        return random.randint(0, 500)
+
+    def get_current_season(self):
+        month = self.date_time.month
+        if month in [3, 4, 5]:
+            return "Spring"
+        elif month in [6, 7, 8]:
+            return "Summer"
+        elif month in [9, 10, 11]:
+            return "Autumn"
+        else:
+            return "Winter"
+
+    def generate_weather(self):
+        try:
+            self.temperature = self._generate_temperature()
+            self.humidity = self._generate_humidity()
+            self.wind_speed = self._generate_wind_speed()
+            self.current_condition = random.choice(list(self.CONDITIONS.keys()))
+            self.feels_like_temperature = self.calculate_feels_like_temperature()
+            self.date_time = datetime.now()
+            self.precipitation_chance = self._generate_precipitation_chance()
+            self.uv_index = self._generate_uv_index()
+            self.aqi = self._generate_aqi()
+            self._store_historical_data()
+        except Exception as e:
+            print(f"Error generating weather: {e}")
+
+    def calculate_feels_like_temperature(self):
+        try:
+            wind_chill_factor = (self.wind_speed * 3.6) / 2
+            humidity_factor = self.humidity / 10
+            feels_like = self.temperature - wind_chill_factor + humidity_factor
+            return round(feels_like, 1)
+        except Exception as e:
+            print(f"Error calculating 'feels like' temperature: {e}")
+            return self.temperature
+
+    def _store_historical_data(self):
+        try:
+            data = {
+                "id": str(uuid4()),
+                "date_time": self.date_time,
+                "temperature": self.temperature,
+                "humidity": self.humidity,
+                "wind_speed": self.wind_speed,
+                "current_condition": self.current_condition,
+                "feels_like_temperature": self.feels_like_temperature,
+                "precipitation_chance": self.precipitation_chance,
+                "uv_index": self.uv_index,
+                "aqi": self.aqi
+            }
+            self.historical_data.append(data)
+        except Exception as e:
+            print(f"Error storing historical data: {e}")
+
+    def display_weather(self):
+        try:
+            description = self.CONDITIONS.get(self.current_condition, 'No description available.')
+            alert = self.ALERTS.get(self.current_condition, 'No alert available.')
+            print(f"Date and Time: {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"Weather: {self.current_condition}")
+            print(f"Description: {description}")
+            print(f"Temperature: {self.temperature}°C ({self.convert_celsius_to_fahrenheit(self.temperature)}°F)")
+            print(f"Feels Like: {self.feels_like_temperature}°C ({self.convert_celsius_to_fahrenheit(self.feels_like_temperature)}°F)")
+            print(f"Humidity: {self.humidity}%")
+            print(f"Wind Speed: {self.wind_speed} m/s ({self.convert_mps_to_kph(self.wind_speed)} km/h)")
+            print(f"Precipitation Chance: {self.precipitation_chance}%")
+            print(f"UV Index: {self.uv_index}")
+            print(f"Air Quality Index (AQI): {self.aqi}")
+            print(f"Alert: {alert}")
+            print()
+        except Exception as e:
+            print(f"Error displaying weather: {e}")
+
+    def suggest_activity(self):
+        try:
+            suggestions = {
+                "Sunny": "Perfect weather for outdoor activities like hiking or picnicking.",
+                "Cloudy": "Good for a casual walk or outdoor sports.",
+                "Rainy": "Stay indoors and enjoy a good book or movie.",
+                "Snowy": "Time to build a snowman or have a snowball fight.",
+                "Windy": "Great for flying kites or windsurfing, but be cautious.",
+                "Stormy": "Stay indoors and avoid outdoor activities."
+            }
+            return suggestions.get(self.current_condition, "Weather condition not recognized.")
+        except Exception as e:
+            print(f"Error suggesting activity: {e}")
+            return "No activity suggestion available."
+
+    def generate_weather_forecast(self):
+        try:
+            forecast = []
+            for i in range(1, 8):
+                next_day = self.date_time + timedelta(days=i)
+                forecast_condition = random.choice(list(self.CONDITIONS.keys()))
+                forecast_temperature = self._generate_temperature()
+                forecast_description = self.CONDITIONS.get(forecast_condition, 'No description available.')
+                forecast.append({
+                    "Date": next_day.strftime('%Y-%m-%d'),
+                    "Weather": forecast_condition,
+                    "Description": forecast_description,
+                    "Temperature": forecast_temperature
+                })
+            return forecast
+        except Exception as e:
+            print(f"Error generating weather forecast: {e}")
+            return []
+
+    def get_historical_summary(self):
+        try:
+            if not self.historical_data:
+                return "No historical data available."
+            
+            summary = {
+                "total_records": len(self.historical_data),
+                "average_temperature": round(sum(data["temperature"] for data in self.historical_data) / len(self.historical_data), 1),
+                "average_humidity": round(sum(data["humidity"] for data in self.historical_data) / len(self.historical_data), 1),
+                "average_wind_speed": round(sum(data["wind_speed"] for data in self.historical_data) / len(self.historical_data), 1),
+                "average_precipitation_chance": round(sum(data["precipitation_chance"] for data in self.historical_data) / len(self.historical_data), 1),
+                "average_uv_index": round(sum(data["uv_index"] for data in self.historical_data) / len(self.historical_data)),
+                "average_aqi": round(sum(data["aqi"] for data in self.historical_data) / len(self.historical_data))
+            }
+            return summary
+        except Exception as e:
+            print(f"Error generating historical summary: {e}")
+            return {}
+
+    def compare_with_historical(self):
+        try:
+            if not self.historical_data:
+                return "No historical data available for comparison."
+            
+            latest_record = self.historical_data[-1]
+            comparison = {
+                "temperature_diff": round(self.temperature - latest_record["temperature"], 1),
+                "humidity_diff": round(self.humidity - latest_record["humidity"], 1),
+                "wind_speed_diff": round(self.wind_speed - latest_record["wind_speed"], 1),
+                "precipitation_chance_diff": round(self.precipitation_chance - latest_record["precipitation_chance"], 1),
+                "uv_index_diff": self.uv_index - latest_record["uv_index"],
+                "aqi_diff": self.aqi - latest_record["aqi"]
+            }
+            return comparison
+        except Exception as e:
+            print(f"Error comparing with historical data: {e}")
+            return {}
+
+    def save_historical_data_to_csv(self, file_path):
+        try:
+            if not self.historical_data:
+                print("No historical data to save.")
+                return
+            
+            with open(file_path, 'w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(["id", "date_time", "temperature", "humidity", "wind_speed", "current_condition",
+                                 "feels_like_temperature", "precipitation_chance", "uv_index", "aqi"])
+                for data in self.historical_data:
+                    writer.writerow([data["id"], data["date_time"].strftime('%Y-%m-%d %H:%M:%S'), data["temperature"],
+                                     data["humidity"], data["wind_speed"], data["current_condition"], data["feels_like_temperature"],
+                                     data["precipitation_chance"], data["uv_index"], data["aqi"]])
+            print(f"Historical data saved to {file_path}")
+        except Exception as e:
+            print(f"Error saving historical data to CSV: {e}")
+
+    def save_historical_data_to_json(self, file_path):
+        try:
+            if not self.historical_data:
+                print("No historical data to save.")
+                return
+            
+            with open(file_path, 'w') as file:
+                json_data = [data for data in self.historical_data]
+                json.dump(json_data, file, default=str, indent=4)
+            print(f"Historical data saved to {file_path}")
+        except Exception as e:
+            print(f"Error saving historical data to JSON: {e}")
+
+    def load_historical_data_from_csv(self, file_path):
+        try:
+            if not os.path.exists(file_path):
+                print(f"File {file_path} does not exist.")
+                return
+            
+            with open(file_path, 'r') as file:
+                reader = csv.DictReader(file)
+                for row in reader:
+                    self.historical_data.append({
+                        "id": row["id"],
+                        "date_time": datetime.strptime(row["date_time"], '%Y-%m-%d %H:%M:%S'),
+                        "temperature": float(row["temperature"]),
+                        "humidity": float(row["humidity"]),
+                        "wind_speed": float(row["wind_speed"]),
+                        "current_condition": row["current_condition"],
+                        "feels_like_temperature": float(row["feels_like_temperature"]),
+                        "precipitation_chance": float(row["precipitation_chance"]),
+                        "uv_index": int(row["uv_index"]),
+                        "aqi": int(row["aqi"])
+                    })
+            print(f"Historical data loaded from {file_path}")
+        except Exception as e:
+            print(f"Error loading historical data from CSV: {e}")
+
+    def load_historical_data_from_json(self, file_path):
+        try:
+            if not os.path.exists(file_path):
+                print(f"File {file_path} does not exist.")
+                return
+            
+            with open(file_path, 'r') as file:
+                json_data = json.load(file)
+                for data in json_data:
+                    data["date_time"] = datetime.strptime(data["date_time"], '%Y-%m-%d %H:%M:%S')
+                    self.historical_data.append(data)
+            print(f"Historical data loaded from {file_path}")
+        except Exception as e:
+            print(f"Error loading historical data from JSON: {e}")
+
+    def plot_historical_data(self):
+        try:
+            if not self.historical_data:
+                print("No historical data to plot.")
+                return
+            
+            dates = [data["date_time"] for data in self.historical_data]
+            temperatures = [data["temperature"] for data in self.historical_data]
+            humidities = [data["humidity"] for data in self.historical_data]
+            wind_speeds = [data["wind_speed"] for data in self.historical_data]
+            precipitations = [data["precipitation_chance"] for data in self.historical_data]
+            uv_indices = [data["uv_index"] for data in self.historical_data]
+            aqi_values = [data["aqi"] for data in self.historical_data]
+
+            plt.figure(figsize=(15, 10))
+
+            plt.subplot(3, 2, 1)
+            plt.plot(dates, temperatures, label="Temperature (°C)", color='red')
+            plt.xlabel("Date")
+            plt.ylabel("Temperature (°C)")
+            plt.title("Historical Temperature")
+            plt.legend()
+
+            plt.subplot(3, 2, 2)
+            plt.plot(dates, humidities, label="Humidity (%)", color='blue')
+            plt.xlabel("Date")
+            plt.ylabel("Humidity (%)")
+            plt.title("Historical Humidity")
+            plt.legend()
+
+            plt.subplot(3, 2, 3)
+            plt.plot(dates, wind_speeds, label="Wind Speed (m/s)", color='green')
+            plt.xlabel("Date")
+            plt.ylabel("Wind Speed (m/s)")
+            plt.title("Historical Wind Speed")
+            plt.legend()
+
+            plt.subplot(3, 2, 4)
+            plt.plot(dates, precipitations, label="Precipitation Chance (%)", color='purple')
+            plt.xlabel("Date")
+            plt.ylabel("Precipitation Chance (%)")
+            plt.title("Historical Precipitation Chance")
+            plt.legend()
+
+            plt.subplot(3, 2, 5)
+            plt.plot(dates, uv_indices, label="UV Index", color='orange')
+            plt.xlabel("Date")
+            plt.ylabel("UV Index")
+            plt.title("Historical UV Index")
+            plt.legend()
+
+            plt.subplot(3, 2, 6)
+            plt.plot(dates, aqi_values, label="Air Quality Index (AQI)", color='brown')
+            plt.xlabel("Date")
+            plt.ylabel("AQI")
+            plt.title("Historical Air Quality Index")
+            plt.legend()
+
+            plt.tight_layout()
+            plt.show()
+        except Exception as e:
+            print(f"Error plotting historical data: {e}")
+
+    @staticmethod
+    def convert_celsius_to_fahrenheit(celsius):
+        try:
+            return round((celsius * 9/5) + 32, 1)
+        except Exception as e:
+            print(f"Error converting Celsius to Fahrenheit: {e}")
+            return celsius
+
+    @staticmethod
+    def convert_mps_to_kph(mps):
+        try:
+            return round(mps * 3.6, 1)
+        except Exception as e:
+            print(f"Error converting m/s to km/h: {e}")
+            return mps
+
+    def add_custom_alert(self, condition, alert_message):
+        try:
+            self.custom_alerts[condition] = alert_message
+        except Exception as e:
+            print(f"Error adding custom alert: {e}")
+
+    def get_custom_alert(self, condition):
+        try:
+            return self.custom_alerts.get(condition, "No custom alert for this condition.")
+        except Exception as e:
+            print(f"Error retrieving custom alert: {e}")
+            return "Error retrieving custom alert."
+
+# Example Usage:
+weather_system = WeatherSystem()
+weather_system.generate_weather()
+weather_system.display_weather()
+weather_system.save_historical_data_to_csv('weather_data.csv')
+weather_system.save_historical_data_to_json('weather_data.json')
+weather_system.load_historical_data_from_csv('weather_data.csv')
+weather_system.load_historical_data_from_json('weather_data.json')
+weather_system.plot_historical_data()
+
+print(weather_system.suggest_activity())
+print(weather_system.generate_weather_forecast())
+print(weather_system.get_historical_summary())
+print(weather_system.compare_with_historical())
+
+weather_system.add_custom_alert("Sunny", "Custom alert: Stay hydrated and wear sunscreen!")
+print(weather_system.get_custom_alert("Sunny"))
