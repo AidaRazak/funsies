@@ -1,0 +1,233 @@
+import random
+import csv
+import json
+import matplotlib.pyplot as plt
+from datetime import datetime, timedelta
+import requests
+import os
+
+class WeatherSystem:
+    CONDITIONS = ["Sunny", "Cloudy", "Rainy", "Snowy", "Windy", "Stormy"]
+    SEASONS = {
+        "Spring": (5, 20, 50),
+        "Summer": (15, 35, 30),
+        "Autumn": (0, 15, 60),
+        "Winter": (-10, 5, 40)
+    }
+
+    def __init__(self):
+        self.temperature = 0.0
+        self.humidity = 0.0
+        self.wind_speed = 0.0
+        self.condition = ""
+        self.date_time = datetime.now()
+        self.historical_data = []
+
+    def _generate_random_value(self, min_val, max_val):
+        return round(random.uniform(min_val, max_val), 1)
+
+    def generate_weather(self):
+        season = self.get_current_season()
+        min_temp, max_temp, _ = self.SEASONS[season]
+        self.temperature = self._generate_random_value(min_temp, max_temp)
+        self.humidity = self._generate_random_value(10, 100)
+        self.wind_speed = self._generate_random_value(0, 25)
+        self.condition = random.choice(self.CONDITIONS)
+        self.date_time = datetime.now()
+        self.historical_data.append({
+            "date_time": self.date_time,
+            "temperature": self.temperature,
+            "humidity": self.humidity,
+            "wind_speed": self.wind_speed,
+            "condition": self.condition
+        })
+
+    def get_current_season(self):
+        month = self.date_time.month
+        if month in [3, 4, 5]: return "Spring"
+        if month in [6, 7, 8]: return "Summer"
+        if month in [9, 10, 11]: return "Autumn"
+        return "Winter"
+
+    def display_weather(self):
+        print(f"Date and Time: {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Weather: {self.condition}")
+        print(f"Temperature: {self.temperature}°C / {self.convert_celsius_to_fahrenheit(self.temperature)}°F / {self.convert_celsius_to_kelvin(self.temperature)}K")
+        print(f"Humidity: {self.humidity}%")
+        print(f"Wind Speed: {self.wind_speed} m/s")
+        print(f"Feels Like: {self.calculate_feels_like_temperature()}°C")
+        print(f"Humidity Index: {self.calculate_humidity_index()}%")
+        print(f"Wind Chill: {self.calculate_wind_chill()}°C")
+
+    def calculate_feels_like_temperature(self):
+        wind_chill_factor = (self.wind_speed * 3.6) / 2
+        humidity_factor = self.humidity / 10
+        feels_like = self.temperature - wind_chill_factor + humidity_factor
+        return round(feels_like, 1)
+
+    def calculate_humidity_index(self):
+        """Calculate a discomfort index based on humidity and temperature."""
+        return round(self.humidity - 0.55 * (1 - 0.01 * self.humidity) * (self.temperature - 14.5), 1)
+
+    def calculate_wind_chill(self):
+        """More accurate wind chill calculation for cold temperatures."""
+        if self.temperature <= 10 and self.wind_speed >= 4.8:
+            wind_chill = 13.12 + 0.6215 * self.temperature - 11.37 * (self.wind_speed ** 0.16) + 0.3965 * self.temperature * (self.wind_speed ** 0.16)
+            return round(wind_chill, 1)
+        return self.temperature
+
+    def save_historical_data_to_csv(self, file_path):
+        self.clean_historical_data()  # Ensure data is clean before saving
+        with open(file_path, 'w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["date_time", "temperature", "humidity", "wind_speed", "condition"])
+            for data in self.historical_data:
+                writer.writerow([data["date_time"].strftime('%Y-%m-%d %H:%M:%S'), data["temperature"],
+                                 data["humidity"], data["wind_speed"], data["condition"]])
+
+    def load_historical_data_from_csv(self, file_path):
+        with open(file_path, 'r') as file:
+            reader = csv.DictReader(file)
+            self.historical_data = []
+            for row in reader:
+                self.historical_data.append({
+                    "date_time": datetime.strptime(row["date_time"], '%Y-%m-%d %H:%M:%S'),
+                    "temperature": float(row["temperature"]),
+                    "humidity": float(row["humidity"]),
+                    "wind_speed": float(row["wind_speed"]),
+                    "condition": row["condition"]
+                })
+
+    def export_historical_data_to_json(self, file_path):
+        with open(file_path, 'w') as file:
+            json.dump(self.historical_data, file)
+        print(f"Historical data exported to {file_path}.")
+
+    def plot_historical_data(self):
+        if not self.historical_data:
+            print("No historical data to plot.")
+            return
+        
+        dates = [data["date_time"] for data in self.historical_data]
+        temperatures = [data["temperature"] for data in self.historical_data]
+
+        plt.figure(figsize=(10, 5))
+        plt.plot(dates, temperatures, label="Temperature (°C)")
+        plt.xlabel("Date")
+        plt.ylabel("Temperature (°C)")
+        plt.title("Historical Temperature")
+        plt.legend()
+        plt.show()
+
+    def analyze_temperature_trend(self, days=7):
+        if len(self.historical_data) < days:
+            return "Insufficient historical data to analyze trend."
+        
+        temperatures = [data["temperature"] for data in self.historical_data[-days:]]
+        trend = "Increasing" if temperatures[-1] > temperatures[0] else "Decreasing" if temperatures[-1] < temperatures[0] else "Stable"
+        return {
+            "average_temperature": round(sum(temperatures) / len(temperatures), 1),
+            "trend": trend
+        }
+
+    def fetch_weather_by_location(self, city):
+        api_key = os.getenv('OPENWEATHERMAP_API_KEY')
+        if not api_key:
+            print("API key not set. Please set the 'OPENWEATHERMAP_API_KEY' environment variable.")
+            return
+
+        url = f'http://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&appid={api_key}'
+        
+        try:
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+            
+            self.temperature = data['main']['temp']
+            self.humidity = data['main']['humidity']
+            self.wind_speed = data['wind']['speed']
+            self.condition = data['weather'][0]['main']
+            self.date_time = datetime.fromtimestamp(data['dt'])
+            self.historical_data.append({
+                "date_time": self.date_time,
+                "temperature": self.temperature,
+                "humidity": self.humidity,
+                "wind_speed": self.wind_speed,
+                "condition": self.condition
+            })
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching weather data: {e}")
+
+    def issue_weather_alerts(self):
+        alerts = {
+            "Stormy": "Severe weather warning: Thunderstorms are expected, stay indoors.",
+            "Rainy": "Heavy rain warning: Flooding possible in low-lying areas."
+        }
+        if self.condition in alerts:
+            print(alerts[self.condition])
+
+    def clean_historical_data(self):
+        """Remove duplicate entries from historical data."""
+        seen = set()
+        unique_data = []
+        for data in self.historical_data:
+            key = (data["date_time"], data["temperature"], data["humidity"], data["wind_speed"], data["condition"])
+            if key not in seen:
+                seen.add(key)
+                unique_data.append(data)
+        self.historical_data = unique_data
+
+    def weather_summary(self):
+        """Generate a brief summary of the current weather."""
+        return f"The weather is {self.condition} with a temperature of {self.temperature}°C and humidity at {self.humidity}%."
+
+    def get_seasonal_advice(self):
+        """Provide advice based on the current season."""
+        season = self.get_current_season()
+        advice = {
+            "Spring": "Great time for planting and enjoying flowers.",
+            "Summer": "Stay cool and hydrated. Perfect for swimming.",
+            "Autumn": "Ideal for hiking and enjoying fall foliage.",
+            "Winter": "Keep warm and drive safely in snowy conditions."
+        }
+        return advice.get(season, "No advice for this season.")
+
+    @staticmethod
+    def convert_celsius_to_fahrenheit(celsius):
+        return round((celsius * 9/5) + 32, 1)
+
+    @staticmethod
+    def convert_fahrenheit_to_celsius(fahrenheit):
+        return round((fahrenheit - 32) * 5/9, 1)
+
+    @staticmethod
+    def convert_celsius_to_kelvin(celsius):
+        return round(celsius + 273.15, 1)
+
+    @staticmethod
+    def convert_kelvin_to_celsius(kelvin):
+        return round(kelvin - 273.15, 1)
+
+
+# Example Usage:
+weather_system = WeatherSystem()
+weather_system.generate_weather()
+weather_system.display_weather()
+weather_system.save_historical_data_to_csv('weather_data.csv')
+weather_system.load_historical_data_from_csv('weather_data.csv')
+weather_system.export_historical_data_to_json('weather_data.json')
+weather_system.plot_historical_data()
+
+city = input("Enter city name for weather: ")
+weather_system.fetch_weather_by_location(city)
+weather_system.display_weather()
+weather_system.issue_weather_alerts()
+
+trend = weather_system.analyze_temperature_trend()
+print(f"Temperature trend: {trend['trend']}, Average temperature: {trend['average_temperature']}°C")
+
+summary = weather_system.weather_summary()
+print(f"Weather Summary: {summary}")
+
+seasonal_advice = weather_system.get_seasonal_advice()
+print(f"Seasonal Advice: {seasonal_advice}")
