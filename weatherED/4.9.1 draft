@@ -1,0 +1,166 @@
+import random
+from datetime import datetime
+from typing import List, Dict
+
+class WeatherSystem:
+    CONDITIONS = {
+        "Sunny": "Clear sky and bright sunshine.",
+        "Cloudy": "Overcast skies with no precipitation.",
+        "Rainy": "Rainfall is expected, be prepared with an umbrella.",
+        "Snowy": "Snow is falling, roads may be slippery.",
+        "Windy": "Strong winds, hold onto your hat.",
+        "Stormy": "Thunderstorms are expected, stay indoors."
+    }
+
+    ALERTS = {
+        "Sunny": "Enjoy the weather but stay hydrated.",
+        "Cloudy": "No significant alerts.",
+        "Rainy": "Flooding possible in low-lying areas.",
+        "Snowy": "Travel may be hazardous.",
+        "Windy": "Secure loose objects outside.",
+        "Stormy": "Severe weather warning in effect."
+    }
+
+    def __init__(self, location: str = "Unknown") -> None:
+        self.location = location
+        self.temperature = 0.0  # in Celsius
+        self.humidity = 0.0  # in percentage
+        self.wind_speed = 0.0  # in meters per second
+        self.current_condition = ""
+        self.feels_like_temperature = 0.0  # Calculated based on temperature, humidity, wind
+        self.date_time = datetime.now()  # Current date and time
+        self.precipitation_chance = 0.0  # in percentage
+        self.uv_index = 0  # UV index
+        self.aqi = 0  # Air Quality Index
+        self.historical_data: List[Dict[str, float]] = []  # Store past weather data
+
+    def _generate_temperature(self) -> float:
+        """Generate random temperature in Celsius."""
+        return round(random.uniform(-10, 35), 1)
+
+    def _generate_humidity(self) -> float:
+        """Generate random humidity percentage."""
+        return round(random.uniform(10, 100), 1)
+
+    def _generate_wind_speed(self) -> float:
+        """Generate random wind speed in meters per second."""
+        return round(random.uniform(0, 25), 1)
+
+    def _generate_precipitation_chance(self) -> float:
+        """Generate random precipitation chance percentage."""
+        return round(random.uniform(0, 100), 1)
+
+    def _generate_uv_index(self) -> int:
+        """Generate random UV index."""
+        return random.randint(0, 11)
+
+    def _generate_aqi(self) -> int:
+        """Generate random Air Quality Index."""
+        return random.randint(0, 500)
+
+    def generate_weather(self) -> None:
+        """Generate random weather data."""
+        try:
+            self.temperature = self._generate_temperature()
+            self.humidity = self._generate_humidity()
+            self.wind_speed = self._generate_wind_speed()
+            self.current_condition = random.choice(list(self.CONDITIONS.keys()))
+            self.feels_like_temperature = self.calculate_feels_like_temperature()
+            self.date_time = datetime.now()
+            self.precipitation_chance = self._generate_precipitation_chance()
+            self.uv_index = self._generate_uv_index()
+            self.aqi = self._generate_aqi()
+            self._store_historical_data()
+            self.check_severe_weather()
+        except Exception as e:
+            print(f"An error occurred while generating weather data: {e}")
+
+    def calculate_feels_like_temperature(self) -> float:
+        """Calculate feels-like temperature based on temperature, humidity, and wind."""
+        wind_chill_factor = (self.wind_speed * 3.6) / 2  # Simplified wind chill factor
+        humidity_factor = self.humidity / 10  # Simplified humidity factor
+        feels_like = self.temperature - wind_chill_factor + humidity_factor
+        return round(feels_like, 1)
+
+    def _store_historical_data(self) -> None:
+        """Store the generated weather data for historical record."""
+        data = {
+            "date_time": self.date_time,
+            "temperature": self.temperature,
+            "humidity": self.humidity,
+            "wind_speed": self.wind_speed,
+            "current_condition": self.current_condition,
+            "feels_like_temperature": self.feels_like_temperature,
+            "precipitation_chance": self.precipitation_chance,
+            "uv_index": self.uv_index,
+            "aqi": self.aqi
+        }
+        # Check if data for the same date_time already exists to avoid duplication
+        if not any(record['date_time'] == self.date_time for record in self.historical_data):
+            self.historical_data.append(data)
+
+    def display_weather(self) -> None:
+        """Display the current weather data."""
+        try:
+            description = self.CONDITIONS.get(self.current_condition, 'No description available.')
+            alert = self.ALERTS.get(self.current_condition, 'No alert available.')
+            print(f"Location: {self.location}")
+            print(f"Date and Time: {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"Weather: {self.current_condition}")
+            print(f"Description: {description}")
+            print(f"Temperature: {self.temperature}°C ({self.convert_celsius_to_fahrenheit(self.temperature)}°F)")
+            print(f"Feels Like: {self.feels_like_temperature}°C ({self.convert_celsius_to_fahrenheit(self.feels_like_temperature)}°F)")
+            print(f"Humidity: {self.humidity}%")
+            print(f"Wind Speed: {self.wind_speed} m/s ({self.convert_mps_to_kph(self.wind_speed)} km/h)")
+            print(f"Precipitation Chance: {self.precipitation_chance}%")
+            print(f"UV Index: {self.uv_index}")
+            print(f"Air Quality Index (AQI): {self.aqi}")
+            print(f"Alert: {alert}")
+            print()
+        except Exception as e:
+            print(f"An error occurred while displaying weather data: {e}")
+
+    def check_severe_weather(self) -> None:
+        """Check for severe weather conditions and issue alerts."""
+        try:
+            if self.current_condition == "Stormy":
+                print(f"Severe weather warning for {self.location}: Thunderstorms are expected, stay indoors.")
+            elif self.current_condition == "Rainy" and self.precipitation_chance > 70:
+                print(f"Heavy rain warning for {self.location}: Flooding possible in low-lying areas.")
+            # Additional severe weather checks can be added here.
+        except Exception as e:
+            print(f"An error occurred during severe weather check: {e}")
+
+    @staticmethod
+    def convert_celsius_to_fahrenheit(celsius: float) -> float:
+        """Convert temperature from Celsius to Fahrenheit."""
+        return round((celsius * 9/5) + 32, 1)
+
+    @staticmethod
+    def convert_fahrenheit_to_celsius(fahrenheit: float) -> float:
+        """Convert temperature from Fahrenheit to Celsius."""
+        return round((fahrenheit - 32) * 5/9, 1)
+
+    @staticmethod
+    def convert_mps_to_kph(mps: float) -> float:
+        """Convert wind speed from meters per second to kilometers per hour."""
+        return round(mps * 3.6, 1)
+
+class MultiLocationWeatherSystem:
+    def __init__(self, locations: List[str]) -> None:
+        self.weather_systems = [WeatherSystem(location) for location in locations]
+
+    def generate_and_display_all_weather(self) -> None:
+        """Generate and display weather for all locations."""
+        for weather_system in self.weather_systems:
+            weather_system.generate_weather()
+            weather_system.display_weather()
+
+# Example usage:
+if __name__ == "__main__":
+    try:
+        locations = ["New York", "Los Angeles", "London", "Tokyo"]
+        multi_location_weather_system = MultiLocationWeatherSystem(locations)
+        multi_location_weather_system.generate_and_display_all_weather()
+    except Exception as e:
+        print(f"An error occurred in the main program: {e}")
