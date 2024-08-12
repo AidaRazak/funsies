@@ -1,0 +1,68 @@
+import random
+from datetime import datetime
+from typing import List, Dict
+
+class WeatherSystem:
+    CONDITIONS = {
+        "Sunny": "Clear sky and bright sunshine.",
+        "Cloudy": "Overcast skies with no precipitation.",
+        "Rainy": "Rainfall is expected, be prepared with an umbrella.",
+        "Snowy": "Snow is falling, roads may be slippery.",
+        "Windy": "Strong winds, hold onto your hat.",
+        "Stormy": "Thunderstorms are expected, stay indoors."
+    }
+    ALERTS = {
+        "Sunny": "Enjoy the weather but stay hydrated.",
+        "Cloudy": "No significant alerts.",
+        "Rainy": "Flooding possible in low-lying areas.",
+        "Snowy": "Travel may be hazardous.",
+        "Windy": "Secure loose objects outside.",
+        "Stormy": "Severe weather warning in effect."
+    }
+    LOCATIONS = ["New York", "Los Angeles", "London", "Tokyo", "Paris", "Sydney"]
+
+    def __init__(self, location: str = None) -> None:
+        self.location = location if location else random.choice(self.LOCATIONS)
+        self.temperature = self._generate_random(0, 35)
+        self.humidity = self._generate_random(20, 100)
+        self.wind_speed = self._generate_random(0, 20)
+        self.current_condition = random.choice(list(self.CONDITIONS.keys()))
+        self.date_time = datetime.now()
+        self.feels_like_temperature = self.calculate_feels_like()
+        self.dew_point = self.calculate_dew_point()
+
+    def _generate_random(self, min_val: float, max_val: float) -> float:
+        return round(random.uniform(min_val, max_val), 1)
+
+    def calculate_feels_like(self) -> float:
+        # Simplified Heat Index formula for 'feels like' temperature
+        hi = self.temperature + (0.33 * self.humidity) - (0.7 * self.wind_speed) - 4
+        return round(hi, 1)
+
+    def calculate_dew_point(self) -> float:
+        # Approximate dew point formula
+        return round(self.temperature - ((100 - self.humidity) / 5), 1)
+
+    def display_weather(self) -> None:
+        desc = self.CONDITIONS[self.current_condition]
+        alert = self.ALERTS[self.current_condition]
+        print(f"{self.location} - {self.date_time:%Y-%m-%d %H:%M:%S}\n"
+              f"Weather: {self.current_condition} ({desc})\n"
+              f"Temp: {self.temperature}°C (Feels like: {self.feels_like_temperature}°C)\n"
+              f"Humidity: {self.humidity}% (Dew Point: {self.dew_point}°C)\n"
+              f"Wind Speed: {self.wind_speed} m/s\n"
+              f"Alert: {alert}\n")
+
+class MultiLocationWeatherSystem:
+    def __init__(self, locations: List[str]) -> None:
+        self.weather_systems = [WeatherSystem(loc) for loc in locations]
+
+    def generate_and_display_all_weather(self) -> None:
+        for weather_system in self.weather_systems:
+            weather_system.display_weather()
+
+# Example usage:
+if __name__ == "__main__":
+    locations = ["New York", "Los Angeles", "London", "Tokyo"]
+    multi_weather = MultiLocationWeatherSystem(locations)
+    multi_weather.generate_and_display_all_weather()
