@@ -1,0 +1,79 @@
+import random
+from datetime import datetime
+from typing import List
+
+class WeatherSystem:
+    CONDITIONS = {
+        "Sunny": ("Clear sky and bright sunshine.", "Enjoy the weather but stay hydrated."),
+        "Cloudy": ("Overcast skies with no precipitation.", "No significant alerts."),
+        "Rainy": ("Rainfall is expected, be prepared with an umbrella.", "Flooding possible in low-lying areas."),
+        "Snowy": ("Snow is falling, roads may be slippery.", "Travel may be hazardous."),
+        "Windy": ("Strong winds, hold onto your hat.", "Secure loose objects outside."),
+        "Stormy": ("Thunderstorms are expected, stay indoors.", "Severe weather warning in effect.")
+    }
+
+    def __init__(self, location: str = "Unknown") -> None:
+        self.location = location
+        self.date_time = datetime.now()
+        self.data = {
+            "temperature": self._generate_random_value(-10, 35),
+            "humidity": self._generate_random_value(10, 100),
+            "wind_speed": self._generate_random_value(0, 25),
+            "precipitation_chance": self._generate_random_value(0, 100),
+            "uv_index": random.randint(0, 11),
+            "aqi": random.randint(0, 500),
+            "condition": random.choice(list(self.CONDITIONS.keys()))
+        }
+        self.data["feels_like"] = self.calculate_feels_like()
+        self.data["dew_point"] = self.calculate_dew_point()
+
+    def _generate_random_value(self, min_val: float, max_val: float) -> float:
+        return round(random.uniform(min_val, max_val), 1)
+
+    def calculate_feels_like(self) -> float:
+        wind_chill_factor = (self.data["wind_speed"] * 3.6) / 2
+        humidity_factor = self.data["humidity"] / 10
+        return round(self.data["temperature"] - wind_chill_factor + humidity_factor, 1)
+
+    def calculate_dew_point(self) -> float:
+        a = 17.27
+        b = 237.7
+        temp = self.data["temperature"]
+        humidity = self.data["humidity"]
+        alpha = ((a * temp) / (b + temp)) + (humidity / 100.0)
+        return round((b * alpha) / (a - alpha), 1)
+
+    def display_weather(self) -> None:
+        condition, alert = self.CONDITIONS[self.data["condition"]]
+        print(f"Location: {self.location}\nDate and Time: {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"Weather: {self.data['condition']} - {condition}")
+        print(f"Temperature: {self.data['temperature']}°C ({self.convert_celsius_to_fahrenheit(self.data['temperature'])}°F)")
+        print(f"Feels Like: {self.data['feels_like']}°C")
+        print(f"Dew Point: {self.data['dew_point']}°C")
+        print(f"Humidity: {self.data['humidity']}%")
+        print(f"Wind Speed: {self.data['wind_speed']} m/s")
+        print(f"Precipitation Chance: {self.data['precipitation_chance']}%")
+        print(f"UV Index: {self.data['uv_index']}, AQI: {self.data['aqi']}")
+        print(f"Alert: {alert}\n")
+
+    def weather_summary(self) -> None:
+        print(f"Summary: {self.data['condition']} with a temperature of {self.data['temperature']}°C and {self.data['humidity']}% humidity.\n")
+
+    @staticmethod
+    def convert_celsius_to_fahrenheit(celsius: float) -> float:
+        return round((celsius * 9/5) + 32, 1)
+
+class MultiLocationWeatherSystem:
+    def __init__(self, locations: List[str]) -> None:
+        self.weather_systems = [WeatherSystem(location) for location in locations]
+
+    def generate_and_display_all_weather(self) -> None:
+        for ws in self.weather_systems:
+            ws.display_weather()
+            ws.weather_summary()
+
+# Example usage:
+if __name__ == "__main__":
+    locations = ["New York", "Los Angeles", "London", "Tokyo"]
+    multi_location_weather_system = MultiLocationWeatherSystem(locations)
+    multi_location_weather_system.generate_and_display_all_weather()
