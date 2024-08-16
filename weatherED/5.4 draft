@@ -1,0 +1,128 @@
+import random
+from datetime import datetime
+from typing import List, Dict, Tuple
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+class WeatherSystem:
+    CONDITIONS: Dict[str, Tuple[str, str]] = {
+        "Sunny": ("Clear sky and bright sunshine.", "Enjoy the weather but stay hydrated."),
+        "Cloudy": ("Overcast skies with no precipitation.", "No significant alerts."),
+        "Rainy": ("Rainfall is expected, be prepared with an umbrella.", "Flooding possible in low-lying areas."),
+        "Snowy": ("Snow is falling, roads may be slippery.", "Travel may be hazardous."),
+        "Windy": ("Strong winds, hold onto your hat.", "Secure loose objects outside."),
+        "Stormy": ("Thunderstorms are expected, stay indoors.", "Severe weather warning in effect."),
+        "Foggy": ("Low visibility due to fog.", "Drive carefully and use fog lights.")
+    }
+
+    def __init__(self, location: str = "Unknown") -> None:
+        self.location = location
+        self.date_time = datetime.now()
+        self.data = self._generate_weather_data()
+
+    def _generate_random_value(self, min_val: float, max_val: float) -> float:
+        return round(random.uniform(min_val, max_val), 1)
+
+    def _generate_weather_data(self) -> Dict[str, float]:
+        """Generates all weather data at once, ensuring valid ranges."""
+        try:
+            weather_data = {
+                "temperature": self._generate_random_value(-10, 35),
+                "humidity": self._generate_random_value(10, 100),
+                "wind_speed": self._generate_random_value(0, 25),
+                "precipitation_chance": self._generate_random_value(0, 100),
+                "uv_index": random.randint(0, 11),
+                "aqi": random.randint(0, 500),
+                "condition": random.choice(list(self.CONDITIONS.keys())),
+            }
+            weather_data["feels_like"] = self.calculate_feels_like(weather_data["temperature"], weather_data["wind_speed"], weather_data["humidity"])
+            weather_data["dew_point"] = self.calculate_dew_point(weather_data["temperature"], weather_data["humidity"])
+            self._validate_data(weather_data)
+            return weather_data
+        except ValueError as ve:
+            logging.error(f"Data validation error: {ve}")
+            raise
+        except Exception as e:
+            logging.error(f"Error generating weather data: {e}")
+            raise
+
+    def _validate_data(self, data: Dict[str, float]) -> None:
+        """Validates weather data to ensure it's within acceptable ranges."""
+        validators = {
+            'temperature': (-10, 35),
+            'humidity': (0, 100),
+            'wind_speed': (0, 25),
+            'precipitation_chance': (0, 100),
+            'uv_index': (0, 11),
+            'aqi': (0, 500)
+        }
+        for key, (min_val, max_val) in validators.items():
+            if not (min_val <= data[key] <= max_val):
+                raise ValueError(f"{key.capitalize()} out of range: {data[key]} (Expected: {min_val}-{max_val})")
+
+    def calculate_feels_like(self, temp: float, wind_speed: float, humidity: float) -> float:
+        """Calculates the feels-like temperature."""
+        wind_speed_kph = self.convert_mps_to_kph(wind_speed)
+
+        if temp <= 10 and wind_speed_kph > 4.8:  # Wind Chill for cold weather
+            feels_like = 13.12 + 0.6215 * temp - 11.37 * wind_speed_kph**0.16 + 0.3965 * temp * wind_speed_kph**0.16
+        elif temp >= 27 and humidity > 40:  # Heat Index for warm weather
+            feels_like = -8.784 + 1.611 * temp + 2.338 * humidity - 0.1461 * temp * humidity
+        else:
+            feels_like = temp
+
+        return round(feels_like, 1)
+
+    def calculate_dew_point(self, temp: float, humidity: float) -> float:
+        """Calculates the dew point using the Magnus formula."""
+        a, b = 17.27, 237.7
+        alpha = ((a * temp) / (b + temp)) + (humidity / 100.0)
+        return round((b * alpha) / (a - alpha), 1)
+
+    def display_weather(self) -> None:
+        """Displays the current weather data."""
+        try:
+            condition, alert = self.CONDITIONS[self.data["condition"]]
+            print(f"Location: {self.location}\nDate and Time: {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"Weather: {self.data['condition']} - {condition}")
+            print(f"Temperature: {self.data['temperature']}°C ({self.convert_temperature(self.data['temperature'])}°F)")
+            print(f"Feels Like: {self.data['feels_like']}°C")
+            print(f"Dew Point: {self.data['dew_point']}°C")
+            print(f"Humidity: {self.data['humidity']}%")
+            print(f"Wind Speed: {self.data['wind_speed']} m/s")
+            print(f"Precipitation Chance: {self.data['precipitation_chance']}%")
+            print(f"UV Index: {self.data['uv_index']}, AQI: {self.data['aqi']}")
+            print(f"Alert: {alert}\n")
+        except Exception as e:
+            logging.error(f"Error displaying weather: {e}")
+
+    def weather_summary(self) -> None:
+        """Provides a brief summary of the weather."""
+        print(f"Summary: {self.data['condition']} with a temperature of {self.data['temperature']}°C and {self.data['humidity']}% humidity.\n")
+
+    @staticmethod
+    def convert_temperature(temp: float, to_fahrenheit: bool = True) -> float:
+        """Converts temperature between Celsius and Fahrenheit."""
+        return round((temp * 9/5) + 32, 1) if to_fahrenheit else round((temp - 32) * 5/9, 1)
+
+    @staticmethod
+    def convert_mps_to_kph(mps: float) -> float:
+        """Converts wind speed from meters per second to kilometers per hour."""
+        return round(mps * 3.6, 1)
+
+class MultiLocationWeatherSystem:
+    def __init__(self, locations: List[str]) -> None:
+        self.weather_systems = [WeatherSystem(location) for location in locations]
+
+    def generate_and_display_all_weather(self) -> None:
+        """Generates and displays weather for all locations."""
+        for ws in self.weather_systems:
+            ws.display_weather()
+            ws.weather_summary()
+
+# Example usage:
+if __name__ == "__main__":
+    locations = ["New York", "Los Angeles", "London", "Tokyo"]
+    multi_location_weather_system = MultiLocationWeatherSystem(locations)
+    multi_location_weather_system.generate_and_display_all_weather()
