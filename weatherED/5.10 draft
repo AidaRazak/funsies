@@ -1,0 +1,215 @@
+import random
+import json
+from datetime import datetime, timedelta
+from typing import List, Dict, Tuple, Optional
+import logging
+
+logging.basicConfig(level=logging.INFO)
+
+class WeatherSystem:
+    CONDITIONS = {
+        "Sunny": ("Clear sky and bright sunshine.", "Stay hydrated."),
+        "Cloudy": ("Overcast skies.", "No significant alerts."),
+        "Rainy": ("Rainfall expected.", "Flooding possible."),
+        "Snowy": ("Snowfall likely.", "Roads may be slippery."),
+        "Windy": ("Strong winds.", "Secure loose objects."),
+        "Stormy": ("Thunderstorms expected.", "Severe weather warning."),
+        "Foggy": ("Low visibility due to fog.", "Drive carefully.")
+    }
+
+    def __init__(self, location: str = "Unknown", units: str = "metric") -> None:
+        if units not in ["metric", "imperial"]:
+            raise ValueError("Units must be either 'metric' or 'imperial'")
+        self.location = location
+        self.units = units
+        self.data: Optional[Dict[str, float]] = None
+        self.history: List[Dict[str, Dict[str, float]]] = []
+        self._initialize_weather_data()
+
+    def _initialize_weather_data(self) -> None:
+        try:
+            self.data = self._generate_weather_data()
+        except Exception as e:
+            logging.error(f"Failed to generate weather data: {e}")
+            raise
+
+    def _generate_weather_data(self) -> Dict[str, float]:
+        try:
+            data = {
+                "temperature": self._random_value(-10, 35),
+                "humidity": self._random_value(10, 100),
+                "wind_speed": self._random_value(0, 25),
+                "precipitation_chance": self._random_value(0, 100),
+                "uv_index": random.randint(0, 11),
+                "aqi": random.randint(0, 500),
+                "condition": random.choice(list(self.CONDITIONS.keys())),
+                "wind_direction": random.choice(["N", "S", "E", "W", "NE", "NW", "SE", "SW"]),
+                "visibility": self._random_value(1, 20),
+                "sunrise": self._sun_time(is_sunrise=True),
+                "sunset": self._sun_time(is_sunrise=False)
+            }
+            data["feels_like"] = self._feels_like(data["temperature"], data["wind_speed"], data["humidity"])
+            data["dew_point"] = self._dew_point(data["temperature"], data["humidity"])
+            self._validate_data(data)
+            return data
+        except ValueError as ve:
+            logging.error(f"Data validation error: {ve}")
+            raise
+        except Exception as e:
+            logging.error(f"Error generating weather data: {e}")
+            raise
+
+    def _random_value(self, min_val: float, max_val: float) -> float:
+        return round(random.uniform(min_val, max_val), 1)
+
+    def _sun_time(self, is_sunrise: bool) -> str:
+        base_hour = 6 if is_sunrise else 18
+        try:
+            sun_time = datetime.now().replace(hour=base_hour, minute=0, second=0) + timedelta(minutes=random.randint(-30, 30))
+            return sun_time.strftime('%H:%M')
+        except Exception as e:
+            logging.error(f"Error generating sun time: {e}")
+            return "00:00"  # Default time in case of error
+
+    def _validate_data(self, data: Dict[str, float]) -> None:
+        try:
+            ranges = {
+                'temperature': (-10, 35), 'humidity': (0, 100), 'wind_speed': (0, 25),
+                'precipitation_chance': (0, 100), 'uv_index': (0, 11), 'aqi': (0, 500), 'visibility': (1, 20)
+            }
+            for k, (min_val, max_val) in ranges.items():
+                if not (min_val <= data[k] <= max_val):
+                    raise ValueError(f"{k.capitalize()} out of range: {data[k]}")
+        except Exception as e:
+            logging.error(f"Error validating data: {e}")
+            raise
+
+    def _feels_like(self, temp: float, wind_speed: float, humidity: float) -> float:
+        wind_kph = wind_speed * 3.6
+        try:
+            if temp <= 10 and wind_kph > 4.8:  # Wind Chill
+                return round(13.12 + 0.6215 * temp - 11.37 * wind_kph**0.16 + 0.3965 * temp * wind_kph**0.16, 1)
+            elif temp >= 27 and humidity > 40:  # Heat Index
+                return round(-8.784 + 1.611 * temp + 2.338 * humidity - 0.1461 * temp * humidity, 1)
+            return temp
+        except Exception as e:
+            logging.error(f"Error calculating feels like temperature: {e}")
+            return temp
+
+    def _dew_point(self, temp: float, humidity: float) -> float:
+        try:
+            alpha = ((17.27 * temp) / (237.7 + temp)) + (humidity / 100.0)
+            return round((237.7 * alpha) / (17.27 - alpha), 1)
+        except Exception as e:
+            logging.error(f"Error calculating dew point: {e}")
+            return temp
+
+    def display_weather(self) -> None:
+        try:
+            if not self.data:
+                raise ValueError("Weather data is not available.")
+            data, cond = self.data, self.CONDITIONS[self.data["condition"]]
+            print(f"Location: {self.location}\nDate: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print(f"Weather: {data['condition']} - {cond[0]}\nTemperature: {data['temperature']}°C ({self._convert_temp(data['temperature'])}°F)")
+            print(f"Feels Like: {data['feels_like']}°C, Dew Point: {data['dew_point']}°C, Humidity: {data['humidity']}%")
+            print(f"Wind: {data['wind_speed']} m/s from {data['wind_direction']}, Visibility: {data['visibility']} km")
+            print(f"Precipitation: {data['precipitation_chance']}%, UV Index: {data['uv_index']}, AQI: {data['aqi']}")
+            print(f"Sunrise: {data['sunrise']}, Sunset: {data['sunset']}\nAlert: {cond[1]}\n")
+        except ValueError as ve:
+            logging.error(f"Display error: {ve}")
+        except Exception as e:
+            logging.error(f"Unexpected error displaying weather: {e}")
+
+    def generate_forecast(self, days: int = 3) -> None:
+        try:
+            print(f"Weather Forecast for {self.location}:\n")
+            for day in range(1, days + 1):
+                forecast_data = self._generate_weather_data()
+                print(f"Date: {(datetime.now() + timedelta(days=day)).strftime('%Y-%m-%d')}")
+                print(f"Weather: {forecast_data['condition']} - {self.CONDITIONS[forecast_data['condition']][0]}")
+                print(f"Temperature: {forecast_data['temperature']}°C, Humidity: {forecast_data['humidity']}%")
+                print(f"Wind Speed: {forecast_data['wind_speed']} m/s, Precipitation: {forecast_data['precipitation_chance']}%\n")
+        except Exception as e:
+            logging.error(f"Error generating forecast: {e}")
+
+    def store_weather_history(self, file_path: str = "weather_history.json") -> None:
+        try:
+            if not self.data:
+                raise ValueError("No weather data to store.")
+            self.history.append({"date_time": datetime.now().strftime('%Y-%m-%d %H:%M:%S'), "data": self.data})
+            with open(file_path, 'w') as file:
+                json.dump(self.history, file, indent=4)
+            logging.info("Weather data stored.")
+        except ValueError as ve:
+            logging.error(f"History error: {ve}")
+        except Exception as e:
+            logging.error(f"Unexpected error storing weather history: {e}")
+
+    def display_weather_history(self, file_path: str = "weather_history.json") -> None:
+        try:
+            with open(file_path, 'r') as file:
+                self.history = json.load(file)
+            if not self.history:
+                raise ValueError("No weather history available.")
+            for record in self.history:
+                print(f"Date: {record['date_time']}")
+                print(f"Weather: {record['data']['condition']}, Temperature: {record['data']['temperature']}°C\n")
+        except ValueError as ve:
+            logging.error(f"History display error: {ve}")
+        except FileNotFoundError:
+            logging.error("History file not found.")
+        except Exception as e:
+            logging.error(f"Unexpected error displaying weather history: {e}")
+
+    def _convert_temp(self, temp: float) -> float:
+        try:
+            if self.units == "imperial":
+                return round((temp * 9/5) + 32, 1)
+            return temp
+        except Exception as e:
+            logging.error(f"Error converting temperature: {e}")
+            return temp
+
+
+class MultiLocationWeatherSystem:
+    def __init__(self, locations: List[str], units: str = "metric") -> None:
+        self.weather_systems = [WeatherSystem(loc, units) for loc in locations]
+
+    def display_all_weather(self) -> None:
+        try:
+            for ws in self.weather_systems:
+                ws.display_weather()
+        except Exception as e:
+            logging.error(f"Error displaying all weather: {e}")
+
+    def generate_forecasts(self, days: int = 3) -> None:
+        try:
+            for ws in self.weather_systems:
+                ws.generate_forecast(days)
+        except Exception as e:
+            logging.error(f"Error generating forecasts: {e}")
+
+    def store_all_histories(self) -> None:
+        try:
+            for ws in self.weather_systems:
+                ws.store_weather_history()
+        except Exception as e:
+            logging.error(f"Error storing all histories: {e}")
+
+    def display_all_histories(self) -> None:
+        try:
+            for ws in self.weather_systems:
+                print(f"History for {ws.location}:")
+                ws.display_weather_history()
+        except Exception as e:
+            logging.error(f"Error displaying all histories: {e}")
+
+
+# Example usage:
+if __name__ == "__main__":
+    locations = ["New York", "Los Angeles", "London", "Tokyo"]
+    system = MultiLocationWeatherSystem(locations)
+    system.display_all_weather()
+    system.generate_forecasts(days=5)
+    system.store_all_histories()
+    system.display_all_histories()
