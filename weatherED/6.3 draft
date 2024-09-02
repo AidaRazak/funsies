@@ -1,0 +1,225 @@
+import random
+from datetime import datetime
+from typing import List, Dict, Tuple
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import time
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+class WeatherSystemConfig:
+    TEMP_RANGE = (-10, 35)
+    HUMIDITY_RANGE = (10, 100)
+    WIND_SPEED_RANGE = (0, 25)
+    PRECIPITATION_CHANCE_RANGE = (0, 100)
+    UV_INDEX_RANGE = (0, 11)
+    AQI_RANGE = (0, 500)
+    SEVERE_CONDITIONS = ["Stormy", "Snowy", "Windy"]
+
+class WeatherSystem:
+    CONDITIONS: Dict[str, Tuple[str, str]] = {
+        "Sunny": ("Clear sky and bright sunshine.", "Enjoy the weather but stay hydrated."),
+        "Cloudy": ("Overcast skies with no precipitation.", "No significant alerts."),
+        "Rainy": ("Rainfall is expected, be prepared with an umbrella.", "Flooding possible in low-lying areas."),
+        "Snowy": ("Snow is falling, roads may be slippery.", "Travel may be hazardous."),
+        "Windy": ("Strong winds, hold onto your hat.", "Secure loose objects outside."),
+        "Stormy": ("Thunderstorms are expected, stay indoors.", "Severe weather warning in effect."),
+        "Foggy": ("Low visibility due to fog.", "Drive carefully and use fog lights.")
+    }
+
+    def __init__(self, location: str = "Unknown", forecast_days: int = 1, unit_system: str = "metric") -> None:
+        """
+        Initialize the WeatherSystem for a specific location.
+        """
+        self.location = location
+        self.date_time = datetime.now()
+        self.unit_system = unit_system
+        self.data = self._generate_weather_data(days=forecast_days)
+        self.history = []
+
+    def _generate_random_value(self, min_val: float, max_val: float) -> float:
+        """
+        Generate a random floating-point value between min_val and max_val.
+        """
+        return round(random.uniform(min_val, max_val), 1)
+
+    def _generate_weather_data(self, days: int = 1) -> List[Dict[str, float]]:
+        """
+        Generates weather data for a number of days.
+        """
+        weather_forecast = []
+        for _ in range(days):
+            weather_data = {
+                "temperature": self._generate_random_value(*WeatherSystemConfig.TEMP_RANGE),
+                "humidity": self._generate_random_value(*WeatherSystemConfig.HUMIDITY_RANGE),
+                "wind_speed": self._generate_random_value(*WeatherSystemConfig.WIND_SPEED_RANGE),
+                "precipitation_chance": self._generate_random_value(*WeatherSystemConfig.PRECIPITATION_CHANCE_RANGE),
+                "uv_index": random.randint(*WeatherSystemConfig.UV_INDEX_RANGE),
+                "aqi": random.randint(*WeatherSystemConfig.AQI_RANGE),
+                "condition": random.choice(list(self.CONDITIONS.keys())),
+            }
+            weather_data["feels_like"] = self.calculate_feels_like(
+                weather_data["temperature"], weather_data["wind_speed"], weather_data["humidity"]
+            )
+            weather_data["dew_point"] = self.calculate_dew_point(
+                weather_data["temperature"], weather_data["humidity"]
+            )
+            self._validate_data(weather_data)
+            weather_forecast.append(weather_data)
+        return weather_forecast
+
+    def _validate_data(self, data: Dict[str, float]) -> None:
+        """
+        Validates weather data to ensure it's within acceptable ranges.
+        """
+        checks = {
+            'temperature': WeatherSystemConfig.TEMP_RANGE,
+            'humidity': WeatherSystemConfig.HUMIDITY_RANGE,
+            'wind_speed': WeatherSystemConfig.WIND_SPEED_RANGE,
+            'precipitation_chance': WeatherSystemConfig.PRECIPITATION_CHANCE_RANGE,
+            'uv_index': WeatherSystemConfig.UV_INDEX_RANGE,
+            'aqi': WeatherSystemConfig.AQI_RANGE,
+        }
+
+        for key, (min_val, max_val) in checks.items():
+            if not (min_val <= data[key] <= max_val):
+                raise ValueError(f"{key.capitalize()} {data[key]} out of range. Expected between {min_val} and {max_val}.")
+
+    def calculate_feels_like(self, temp: float, wind_speed: float, humidity: float) -> float:
+        """
+        Calculates the feels-like temperature using a more accurate formula.
+        """
+        wind_speed_kph = self.convert_mps_to_kph(wind_speed)
+        feels_like = temp
+        if temp <= 10 and wind_speed_kph > 4.8:  # Wind Chill for cold weather
+            feels_like = 13.12 + 0.6215 * temp - 11.37 * wind_speed_kph**0.16 + 0.3965 * temp * wind_speed_kph**0.16
+        elif temp >= 27 and humidity > 40:  # Heat Index for warm weather
+            feels_like = -8.784 + 1.611 * temp + 2.338 * humidity - 0.1461 * temp * humidity
+        return round(feels_like, 1)
+
+    def calculate_dew_point(self, temp: float, humidity: float) -> float:
+        """
+        Calculates the dew point using the Magnus formula.
+        """
+        a, b = 17.27, 237.7
+        alpha = ((a * temp) / (b + temp)) + (humidity / 100.0)
+        return round((b * alpha) / (a - alpha), 1)
+
+    def save_to_history(self) -> None:
+        """
+        Saves the current weather data to history.
+        """
+        self.history.append({"date_time": self.date_time, "data": self.data})
+        logging.info(f"Weather data saved to history for location: {self.location}")
+
+    def display_history(self) -> None:
+        """
+        Displays historical weather data.
+        """
+        logging.info(f"Displaying weather history for location: {self.location}")
+        for record in self.history:
+            print(f"Date and Time: {record['date_time'].strftime('%Y-%m-%d %H:%M:%S')}")
+            for day_data in record['data']:
+                condition, _ = self.CONDITIONS[day_data["condition"]]
+                print(f"  Condition: {day_data['condition']} - {condition}")
+                print(f"  Temperature: {day_data['temperature']}°C")
+            print("-" * 30)
+
+    def update_weather(self) -> None:
+        """
+        Update the weather data and save the previous data to history.
+        """
+        logging.info(f"Updating weather data for location: {self.location}")
+        self.save_to_history()
+        self.data = self._generate_weather_data()
+
+    def display_weather(self) -> None:
+        """
+        Displays the current weather data or forecast.
+        """
+        temp_unit = "°C" if self.unit_system == "metric" else "°F"
+        wind_unit = "m/s" if self.unit_system == "metric" else "mph"
+        
+        print(f"Location: {self.location}")
+        print(f"Date and Time: {self.date_time.strftime('%Y-%m-%d %H:%M:%S')}")
+        for i, data in enumerate(self.data):
+            condition, alert = self.CONDITIONS[data["condition"]]
+            print(f"Day {i+1}:")
+            temp = data['temperature']
+            wind_speed = data['wind_speed']
+            if self.unit_system == "imperial":
+                temp = self.convert_temperature(temp, to_fahrenheit=True)
+                wind_speed = self.convert_mps_to_kph(wind_speed) * 0.621371
+            print(f"  Weather: {data['condition']} - {condition}")
+            print(f"  Temperature: {temp}{temp_unit}")
+            print(f"  Feels Like: {data['feels_like']}{temp_unit}")
+            print(f"  Dew Point: {data['dew_point']}{temp_unit}")
+            print(f"  Humidity: {data['humidity']}%")
+            print(f"  Wind Speed: {wind_speed}{wind_unit}")
+            print(f"  Precipitation Chance: {data['precipitation_chance']}%")
+            print(f"  UV Index: {data['uv_index']}")
+            print(f"  Air Quality Index: {data['aqi']}")
+            if data["condition"] in WeatherSystemConfig.SEVERE_CONDITIONS:
+                print(f"  ALERT: {alert}")
+            print("-" * 30)
+
+    def send_email_alert(self, recipient_email: str) -> None:
+        """
+        Sends an email alert with the current weather conditions.
+        """
+        try:
+            logging.info("Preparing to send weather alert email.")
+            sender_email = "your_email@example.com"
+            sender_password = "your_email_password"
+
+            msg = MIMEMultipart("alternative")
+            msg["Subject"] = "Weather Alert"
+            msg["From"] = sender_email
+            msg["To"] = recipient_email
+
+            text_content = f"Weather Alert for {self.location}:\n"
+            for data in self.data:
+                text_content += f"{data['condition']} - {self.CONDITIONS[data['condition']][0]}\n"
+
+            msg.attach(MIMEText(text_content, "plain"))
+
+            with smtplib.SMTP_SSL("smtp.example.com", 465) as server:
+                server.login(sender_email, sender_password)
+                server.sendmail(sender_email, recipient_email, msg.as_string())
+            logging.info("Weather alert email sent successfully.")
+        except smtplib.SMTPException as e:
+            logging.error(f"Failed to send email: {e}")
+        except Exception as e:
+            logging.error(f"An error occurred while sending email: {e}")
+
+    def simulate_real_time_updates(self, interval: int = 60, duration: int = 3600) -> None:
+        """
+        Simulate real-time weather updates every 'interval' seconds for 'duration' seconds.
+        """
+        start_time = time.time()
+        logging.info("Starting real-time weather simulation.")
+        while time.time() - start_time < duration:
+            self.update_weather()
+            self.display_weather()
+            time.sleep(interval)
+
+    def convert_mps_to_kph(self, mps: float) -> float:
+        """
+        Converts meters per second (m/s) to kilometers per hour (kph).
+        """
+        return round(mps * 3.6, 2)
+
+    def convert_temperature(self, temp: float, to_fahrenheit: bool = False) -> float:
+        """
+        Converts temperature between Celsius and Fahrenheit.
+        """
+        if to_fahrenheit:
+            return round(temp * 9/5 + 32, 2)
+        return round((temp - 32) * 5/9, 2)
+
+# Example usage:
+weather_system = WeatherSystem(location="Kuala Lumpur", forecast_days=3, unit_system="metric")
+weather_system.simulate_real_time_updates(interval=30, duration=180)
