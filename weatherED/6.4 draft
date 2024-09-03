@@ -1,0 +1,117 @@
+import random
+import smtplib
+import logging
+from email.mime.text import MIMEText
+from datetime import datetime
+from typing import Dict, List, Tuple
+import time
+
+# Setup logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+class WeatherSystemConfig:
+    TEMP_RANGE = (-10, 35)
+    HUMIDITY_RANGE = (10, 100)
+    WIND_SPEED_RANGE = (0, 25)
+    PRECIPITATION_CHANCE_RANGE = (0, 100)
+    UV_INDEX_RANGE = (0, 11)
+    AQI_RANGE = (0, 500)
+    SEVERE_CONDITIONS = ["Stormy", "Snowy", "Windy"]
+
+class WeatherSystem:
+    CONDITIONS = {
+        "Sunny": "Clear sky and bright sunshine.",
+        "Cloudy": "Overcast skies with no precipitation.",
+        "Rainy": "Rainfall is expected, be prepared.",
+        "Snowy": "Snow is falling, roads may be slippery.",
+        "Windy": "Strong winds, secure loose objects.",
+        "Stormy": "Thunderstorms expected, stay indoors.",
+        "Foggy": "Low visibility due to fog, drive carefully."
+    }
+
+    def __init__(self, location="Unknown", forecast_days=1, unit_system="metric"):
+        self.location = location
+        self.unit_system = unit_system
+        self.history = []
+        self.data = self._generate_weather_data(forecast_days)
+
+    def _generate_weather_data(self, days=1) -> List[Dict[str, float]]:
+        return [
+            {
+                "temperature": self._rand_val(WeatherSystemConfig.TEMP_RANGE),
+                "humidity": self._rand_val(WeatherSystemConfig.HUMIDITY_RANGE),
+                "wind_speed": self._rand_val(WeatherSystemConfig.WIND_SPEED_RANGE),
+                "precipitation_chance": self._rand_val(WeatherSystemConfig.PRECIPITATION_CHANCE_RANGE),
+                "uv_index": random.randint(*WeatherSystemConfig.UV_INDEX_RANGE),
+                "aqi": random.randint(*WeatherSystemConfig.AQI_RANGE),
+                "condition": random.choice(list(self.CONDITIONS.keys())),
+            } for _ in range(days)
+        ]
+
+    def _rand_val(self, val_range: Tuple[int, int]) -> float:
+        return round(random.uniform(*val_range), 1)
+
+    def _validate_data(self, data: Dict[str, float]) -> None:
+        ranges = WeatherSystemConfig.__dict__
+        for key, value in data.items():
+            if key in ranges and not ranges[key][0] <= value <= ranges[key][1]:
+                raise ValueError(f"{key.capitalize()} {value} out of range.")
+
+    def _calc_feels_like(self, temp: float, wind_speed: float, humidity: float) -> float:
+        wind_speed_kph = wind_speed * 3.6
+        if temp <= 10 and wind_speed_kph > 4.8:
+            return round(13.12 + 0.6215 * temp - 11.37 * wind_speed_kph ** 0.16 + 0.3965 * temp * wind_speed_kph ** 0.16, 1)
+        if temp >= 27 and humidity > 40:
+            return round(-8.784 + 1.611 * temp + 2.338 * humidity - 0.1461 * temp * humidity, 1)
+        return temp
+
+    def _calc_dew_point(self, temp: float, humidity: float) -> float:
+        alpha = (17.27 * temp) / (237.7 + temp) + (humidity / 100)
+        return round((237.7 * alpha) / (17.27 - alpha), 1)
+
+    def save_to_history(self) -> None:
+        self.history.append({"date_time": datetime.now(), "data": self.data})
+        logging.info("Weather data saved to history.")
+
+    def display_history(self) -> None:
+        for record in self.history:
+            print(f"Date and Time: {record['date_time']}")
+            for day_data in record['data']:
+                print(f"  {day_data['condition']}: {self.CONDITIONS[day_data['condition']]}")
+                print(f"  Temp: {day_data['temperature']}°C, Feels Like: {self._calc_feels_like(day_data['temperature'], day_data['wind_speed'], day_data['humidity'])}°C")
+                print("-" * 30)
+
+    def send_email_alert(self, recipient_email: str) -> None:
+        try:
+            msg = MIMEText("\n".join([f"{d['condition']}: {self.CONDITIONS[d['condition']]}" for d in self.data]))
+            msg['Subject'] = "Weather Alert"
+            msg['From'] = "your_email@example.com"
+            msg['To'] = recipient_email
+
+            with smtplib.SMTP_SSL("smtp.example.com", 465) as server:
+                server.login(msg['From'], "your_email_password")
+                server.sendmail(msg['From'], recipient_email, msg.as_string())
+            logging.info("Email alert sent.")
+        except Exception as e:
+            logging.error(f"Failed to send email: {e}")
+
+    def simulate_real_time_updates(self, interval=60, duration=3600) -> None:
+        start_time = time.time()
+        while time.time() - start_time < duration:
+            self.update_weather()
+            self.display_weather()
+            time.sleep(interval)
+
+    def update_weather(self) -> None:
+        self.save_to_history()
+        self.data = self._generate_weather_data()
+
+    def display_weather(self) -> None:
+        for i, data in enumerate(self.data):
+            print(f"Day {i+1}: {data['condition']} - {self.CONDITIONS[data['condition']]}")
+            print(f"Temp: {data['temperature']}°C, Feels Like: {self._calc_feels_like(data['temperature'], data['wind_speed'], data['humidity'])}°C")
+            print("-" * 30)
+
+# Example usage:
+weather_system = WeatherSystem(location="Kuala Lumpur", forecast_days=3)
+weather_system.simulate_real_time_updates(interval=30, duration=180)
