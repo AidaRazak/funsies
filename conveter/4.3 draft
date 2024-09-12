@@ -1,0 +1,244 @@
+package com.exchange;
+
+import java.io.*;
+import java.net.*;
+import java.time.*;
+import java.util.*;
+import java.util.concurrent.*;
+import javax.servlet.*;
+import javax.servlet.http.*;
+import com.google.gson.*;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
+import java.util.logging.*;
+
+public class Convert extends HttpServlet {
+    private static final long serialVersionUID = 1L;
+    private static final Logger logger = Logger.getLogger(Convert.class.getName());
+    private static final String API_URL = "https://api.exchangerate-api.com/v4/";
+    private static final String LATEST = "latest/";
+    private static final String HISTORICAL = "history/";
+    private static final int DEFAULT_CACHE_EXPIRATION_MINUTES = 60;
+    private static final int DEFAULT_RATE_LIMIT = 100;
+    private static final String ERROR_INVALID_PARAMETERS = "Invalid input parameters.";
+    private static final String ERROR_INVALID_NUMBER = "Invalid number format.";
+    private static final String ERROR_FETCHING_RATES = "Unable to fetch conversion rates.";
+    private static final String ERROR_UNAUTHORIZED = "Unauthorized";
+    private static final String ERROR_RATE_LIMIT_EXCEEDED = "Rate limit exceeded.";
+    private static final String ERROR_HISTORY_NOT_FOUND = "Historical rates not found.";
+    
+    private final Map<String, CachedRates> ratesCache = new ConcurrentHashMap<>();
+    private final Map<String, List<ConversionRecord>> userConversionHistory = new ConcurrentHashMap<>();
+    private final Map<String, AtomicInteger> userRequestCounts = new ConcurrentHashMap<>();
+    private final Map<String, LocalDateTime> userRequestTimes = new ConcurrentHashMap<>();
+    private int cacheExpirationMinutes = DEFAULT_CACHE_EXPIRATION_MINUTES;
+    private int rateLimit = DEFAULT_RATE_LIMIT;
+
+    class CachedRates {
+        JsonObject rates;
+        LocalDateTime fetchTime;
+
+        CachedRates(JsonObject rates, LocalDateTime fetchTime) {
+            this.rates = rates;
+            this.fetchTime = fetchTime;
+        }
+    }
+
+    class ConversionRecord {
+        double originalAmount;
+        double convertedAmount;
+        double conversionRate;
+        String currency;
+        String timestamp;
+
+        ConversionRecord(double originalAmount, double convertedAmount, double conversionRate, String currency, String timestamp) {
+            this.originalAmount = originalAmount;
+            this.convertedAmount = convertedAmount;
+            this.conversionRate = conversionRate;
+            this.currency = currency;
+            this.timestamp = timestamp;
+        }
+    }
+
+    @Override
+    public void init() throws ServletException {
+        super.init();
+        String cacheExpiration = getServletConfig().getInitParameter("cacheExpirationMinutes");
+        if (cacheExpiration != null) {
+            try {
+                cacheExpirationMinutes = Integer.parseInt(cacheExpiration);
+            } catch (NumberFormatException e) {
+                logger.warning("Invalid cache expiration time format. Using default value.");
+            }
+        }
+        String rateLimitParam = getServletConfig().getInitParameter("rateLimit");
+        if (rateLimitParam != null) {
+            try {
+                rateLimit = Integer.parseInt(rateLimitParam);
+            } catch (NumberFormatException e) {
+                logger.warning("Invalid rate limit format. Using default value.");
+            }
+        }
+    }
+
+    @Override
+    protected void doGet(HttpServletRequest req, HttpServletResponse resp) throws ServletException, IOException {
+        String amountStr = req.getParameter("amount");
+        String curTo = req.getParameter("to");
+        String curFrom = req.getParameter("from");
+        String date = req.getParameter("date");
+        String user = req.getParameter("user");
+        String endpoint = req.getPathInfo();
+
+        resp.setContentType("application/json;charset=UTF-8");
+
+        if (!isValidUser(req.getHeader("Authorization"))) {
+            sendError(resp, ERROR_UNAUTHORIZED, HttpServletResponse.SC_UNAUTHORIZED);
+            return;
+        }
+
+        if ("/history".equals(endpoint)) {
+            sendUserHistory(resp, user);
+            return;
+        }
+
+        if (!validateInputs(resp, amountStr, curTo, curFrom)) return;
+        if (!isRateLimited(user)) {
+            sendError(resp, ERROR_RATE_LIMIT_EXCEEDED, HttpServletResponse.SC_TOO_MANY_REQUESTS);
+            return;
+        }
+
+        double amount = Double.parseDouble(amountStr); // Validated already
+        JsonObject rates = getExchangeRates(curFrom, date);
+
+        try (PrintWriter out = resp.getWriter()) {
+            JsonArray results = new JsonArray();
+            for (String targetCurrency : curTo.split(",")) {
+                if (!rates.has(targetCurrency)) {
+                    sendError(resp, ERROR_FETCHING_RATES, HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                    return;
+                }
+                double rate = rates.get(targetCurrency).getAsDouble();
+                double convertedAmount = amount * rate;
+                results.add(createResultJson(amount, convertedAmount, rate, targetCurrency));
+                logUserConversionHistory(user, amount, convertedAmount, rate, targetCurrency);
+            }
+            JsonObject response = createResponseJson("success", results);
+            out.println(response);
+        } catch (Exception e) {
+            sendError(resp, "Error during conversion", HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private JsonObject getExchangeRates(String baseCurrency, String date) throws IOException {
+        String cacheKey = baseCurrency + (date != null ? date : "");
+        CachedRates cachedRates = ratesCache.get(cacheKey);
+
+        if (cachedRates != null && Duration.between(cachedRates.fetchTime, LocalDateTime.now()).toMinutes() < cacheExpirationMinutes) {
+            return cachedRates.rates;
+        }
+
+        String query = API_URL + (date != null ? HISTORICAL + URLEncoder.encode(date, "UTF-8") + "/" : LATEST) + URLEncoder.encode(baseCurrency, "UTF-8");
+        URL url = new URL(query);
+
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(url.openStream()))) {
+            JsonObject response = JsonParser.parseReader(in).getAsJsonObject();
+            JsonObject rates = response.getAsJsonObject("rates");
+            ratesCache.put(cacheKey, new CachedRates(rates, LocalDateTime.now()));
+            return rates;
+        }
+    }
+
+    private boolean validateInputs(HttpServletResponse resp, String amountStr, String curTo, String curFrom) throws IOException {
+        if (amountStr == null || curTo == null || curFrom == null || !isNumeric(amountStr)) {
+            sendError(resp, ERROR_INVALID_PARAMETERS, HttpServletResponse.SC_BAD_REQUEST);
+            return false;
+        }
+        if (!isValidCurrency(curTo) || !isValidCurrency(curFrom)) {
+            sendError(resp, "Invalid currency codes", HttpServletResponse.SC_BAD_REQUEST);
+            return false;
+        }
+        return true;
+    }
+
+    private boolean isRateLimited(String user) {
+        if (user == null) return true;
+        userRequestCounts.putIfAbsent(user, new AtomicInteger(0));
+        userRequestTimes.putIfAbsent(user, LocalDateTime.now());
+
+        LocalDateTime lastRequest = userRequestTimes.get(user);
+        if (Duration.between(lastRequest, LocalDateTime.now()).toMinutes() >= 1) {
+            userRequestCounts.get(user).set(0);
+            userRequestTimes.put(user, LocalDateTime.now());
+        }
+        return userRequestCounts.get(user).incrementAndGet() <= rateLimit;
+    }
+
+    private void logUserConversionHistory(String user, double amount, double convertedAmount, double conversionRate, String currency) {
+        if (user != null && !user.isEmpty()) {
+            userConversionHistory.computeIfAbsent(user, k -> new ArrayList<>())
+                .add(new ConversionRecord(amount, convertedAmount, conversionRate, currency, LocalDateTime.now().toString()));
+        }
+    }
+
+    private void sendUserHistory(HttpServletResponse resp, String user) throws IOException {
+        List<ConversionRecord> history = userConversionHistory.get(user);
+        JsonObject responseJson = new JsonObject();
+        if (history != null) {
+            JsonArray historyArray = new JsonArray();
+            for (ConversionRecord record : history) {
+                JsonObject recordJson = new JsonObject();
+                recordJson.addProperty("originalAmount", record.originalAmount);
+                recordJson.addProperty("convertedAmount", record.convertedAmount);
+                recordJson.addProperty("conversionRate", record.conversionRate);
+                recordJson.addProperty("currency", record.currency);
+                recordJson.addProperty("timestamp", record.timestamp);
+                historyArray.add(recordJson);
+            }
+            responseJson.add("history", historyArray);
+        } else {
+            responseJson.addProperty("error", "No conversion history found for user.");
+        }
+        try (PrintWriter out = resp.getWriter()) {
+            out.println(responseJson);
+        }
+    }
+
+    private JsonObject createResponseJson(String status, JsonArray results) {
+        JsonObject response = new JsonObject();
+        response.addProperty("status", status);
+        response.add("results", results);
+        return response;
+    }
+
+    private JsonObject createResultJson(double amount, double convertedAmount, double rate, String currency) {
+        JsonObject resultJson = new JsonObject();
+        resultJson.addProperty("originalAmount", amount);
+        resultJson.addProperty("convertedAmount", String.format("%.2f", convertedAmount));
+        resultJson.addProperty("conversionRate", rate);
+        resultJson.addProperty("currency", currency);
+        return resultJson;
+    }
+
+    private boolean isValidUser(String authHeader) {
+        if (authHeader == null || !authHeader.startsWith("Basic ")) return false;
+        String[] creds = new String(Base64.getDecoder().decode(authHeader.substring(6)), StandardCharsets.UTF_8).split(":");
+        return "admin".equals(creds[0]) && "password".equals(creds[1]);
+    }
+
+    private boolean isNumeric(String str) {
+        try { Double.parseDouble(str); return true; }
+        catch (NumberFormatException e) { return false; }
+    }
+
+    private boolean isValidCurrency(String currency) {
+        return currency.matches("^[A-Z]{3}$");
+    }
+
+    private void sendError(HttpServletResponse resp, String message, int status) throws IOException {
+        resp.setStatus(status);
+        JsonObject error = new JsonObject();
+        error.addProperty("error", message);
+        try (PrintWriter out = resp.getWriter()) { out.println(error); }
+    }
+}
