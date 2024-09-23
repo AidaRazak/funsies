@@ -1,0 +1,111 @@
+import tkinter as tk
+from tkinter import messagebox, filedialog, ttk
+from datetime import datetime
+
+# Utility functions
+def calculate_bmi(weight, height): 
+    return weight / height ** 2
+
+def bmi_category(bmi):
+    categories = [(18.5, "Underweight"), (24.9, "Normal weight"), (29.9, "Overweight")]
+    return next((cat for limit, cat in categories if bmi <= limit), "Obesity")
+
+def convert_units(weight, height, w_unit, h_unit):
+    weight = weight * 0.453592 if w_unit == "lbs" else weight
+    height = (height / 100 if h_unit == "cm" else height * 0.0254 if h_unit == "in" else height)
+    return weight, height
+
+def log_bmi(name, weight, height, bmi, category):
+    with open("bmi_log.txt", "a") as file:
+        file.write(f"{datetime.now()}: {name}, Weight: {weight:.2f} kg, Height: {height:.2f} m, BMI: {bmi:.2f}, Category: {category}\n")
+
+def save_log_file():
+    file_path = filedialog.asksaveasfilename(defaultextension=".txt")
+    if file_path:
+        with open("bmi_log.txt", "r") as src, open(file_path, "w") as dst:
+            dst.write(src.read())
+
+def update_profile_list():
+    with open("bmi_log.txt", "r") as file:
+        profiles = {line.split(",")[1].split(":")[1].strip() for line in file}
+    profile_combo['values'] = list(profiles)
+
+def calculate_and_display_bmi():
+    try:
+        name = name_entry.get()
+        weight, height = float(weight_entry.get()), float(height_entry.get())
+        if weight <= 0 or height <= 0: raise ValueError("Positive values required.")
+        weight, height = convert_units(weight, height, weight_unit.get(), height_unit.get())
+        bmi = calculate_bmi(weight, height)
+        category = bmi_category(bmi)
+        log_bmi(name, weight, height, bmi, category)
+        result_label.config(text=f"BMI: {bmi:.2f}, {category}")
+        update_profile_list()
+        display_bmi_graph(bmi)
+    except ValueError as e:
+        messagebox.showerror("Error", e)
+
+def display_bmi_graph(bmi):
+    canvas.delete("all")
+    x = (bmi / 40) * 300
+    categories = ["Underweight", "Normal", "Overweight", "Obesity"]
+    colors = ["#ADD8E6", "#90EE90", "#FFD700", "#FF6347"]
+    thresholds = [18.5, 24.9, 29.9]
+    for i, (cat, color) in enumerate(zip(categories, colors)):
+        width = (thresholds[i] / 40) * 300 if i < len(thresholds) else 300 - x
+        canvas.create_rectangle(x, 0, x + width, 30, fill=color, outline="")
+        x += width
+    canvas.create_line((bmi / 40) * 300, 0, (bmi / 40) * 300, 30, fill="black", width=2)
+
+# GUI Setup
+root = tk.Tk()
+root.title("BMI Calculator")
+root.tk.call("source", "sun-valley.tcl")
+ttk.Style(root).theme_use("sun-valley")
+
+input_frame = ttk.Frame(root, padding="10")
+input_frame.grid(row=0, column=0, sticky=(tk.W, tk.E))
+button_frame = ttk.Frame(root, padding="10")
+button_frame.grid(row=1, column=0, sticky=(tk.W, tk.E))
+result_frame = ttk.Frame(root, padding="10")
+result_frame.grid(row=2, column=0, sticky=(tk.W, tk.E))
+
+# Input fields
+ttk.Label(input_frame, text="Name:").grid(row=0, column=0, pady=5)
+name_entry = ttk.Entry(input_frame)
+name_entry.grid(row=0, column=1, sticky=(tk.W, tk.E))
+
+ttk.Label(input_frame, text="Weight:").grid(row=1, column=0, pady=5)
+weight_entry = ttk.Entry(input_frame)
+weight_entry.grid(row=1, column=1, sticky=(tk.W, tk.E))
+
+ttk.Label(input_frame, text="Height:").grid(row=2, column=0, pady=5)
+height_entry = ttk.Entry(input_frame)
+height_entry.grid(row=2, column=1, sticky=(tk.W, tk.E))
+
+# Units
+weight_unit, height_unit = tk.StringVar(value="kg"), tk.StringVar(value="m")
+unit_options = [("kg", "lbs"), ("m", "cm", "in")]
+
+for i, options in enumerate(unit_options):
+    for j, opt in enumerate(options):
+        ttk.Radiobutton(input_frame, text=opt, variable=(weight_unit if i == 0 else height_unit), value=opt).grid(row=i+1, column=j+2)
+
+# Buttons
+ttk.Button(button_frame, text="Calculate BMI", command=calculate_and_display_bmi).grid(row=0, column=0)
+ttk.Button(button_frame, text="Save Log", command=save_log_file).grid(row=0, column=1)
+ttk.Button(button_frame, text="Clear Log", command=lambda: open("bmi_log.txt", "w").close()).grid(row=0, column=2)
+
+# Result and Graph
+result_label = ttk.Label(result_frame, text="", font=("Helvetica", 12))
+result_label.grid(row=0, column=0, pady=10)
+canvas = tk.Canvas(result_frame, width=300, height=30)
+canvas.grid(row=1, column=0, pady=10)
+
+# Profile Combo
+ttk.Label(input_frame, text="Profile:").grid(row=3, column=0)
+profile_combo = ttk.Combobox(input_frame)
+profile_combo.grid(row=3, column=1, sticky=(tk.W, tk.E))
+ttk.Button(input_frame, text="View Profile", command=lambda: messagebox.showinfo("Info", '\n'.join(load_profiles()))).grid(row=3, column=2)
+
+root.mainloop()
